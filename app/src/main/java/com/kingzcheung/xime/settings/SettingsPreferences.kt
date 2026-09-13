@@ -269,6 +269,8 @@ object SettingsPreferences {
     private const val KEY_VIBRATION_LONG_PRESS_DURATION = "vibration_long_press_duration"
     private const val KEY_VIBRATION_PRESS_AMPLITUDE = "vibration_press_amplitude"
     private const val KEY_VIBRATION_LONG_PRESS_AMPLITUDE = "vibration_long_press_amplitude"
+    private const val KEY_VIBRATION_CURSOR_MOVE_DURATION = "vibration_cursor_move_duration"
+    private const val KEY_VIBRATION_CURSOR_MOVE_AMPLITUDE = "vibration_cursor_move_amplitude"
 
     fun getHapticMode(context: Context): String {
         return getPrefs(context).getString(KEY_HAPTIC_MODE, "following_system") ?: "following_system"
@@ -316,6 +318,22 @@ object SettingsPreferences {
 
     fun setVibrationLongPressAmplitude(context: Context, amplitude: Int) {
         getPrefs(context).edit().putInt(KEY_VIBRATION_LONG_PRESS_AMPLITUDE, amplitude).apply()
+    }
+
+    fun getVibrationCursorMoveDuration(context: Context): Int {
+        return getPrefs(context).getInt(KEY_VIBRATION_CURSOR_MOVE_DURATION, 0)
+    }
+
+    fun setVibrationCursorMoveDuration(context: Context, duration: Int) {
+        getPrefs(context).edit().putInt(KEY_VIBRATION_CURSOR_MOVE_DURATION, duration).apply()
+    }
+
+    fun getVibrationCursorMoveAmplitude(context: Context): Int {
+        return getPrefs(context).getInt(KEY_VIBRATION_CURSOR_MOVE_AMPLITUDE, 0)
+    }
+
+    fun setVibrationCursorMoveAmplitude(context: Context, amplitude: Int) {
+        getPrefs(context).edit().putInt(KEY_VIBRATION_CURSOR_MOVE_AMPLITUDE, amplitude).apply()
     }
 
     fun getKeyboardTheme(context: Context): String {
@@ -508,6 +526,32 @@ object SettingsPreferences {
 
     fun setShowPressBubble(context: Context, show: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_SHOW_PRESS_BUBBLE, show).apply()
+    }
+
+    /** 滑动移光标：每移动一步所需的水平距离（dp）。越小越灵敏。默认 25。 */
+    private const val KEY_CURSOR_MOVE_STEP_DP = "cursor_move_step_dp"
+    private const val DEFAULT_CURSOR_MOVE_STEP_DP = 25
+
+    fun getCursorMoveStepDp(context: Context): Int {
+        return getPrefs(context).getInt(KEY_CURSOR_MOVE_STEP_DP, DEFAULT_CURSOR_MOVE_STEP_DP)
+            .coerceIn(10, 50)
+    }
+
+    fun setCursorMoveStepDp(context: Context, stepDp: Int) {
+        getPrefs(context).edit().putInt(KEY_CURSOR_MOVE_STEP_DP, stepDp.coerceIn(10, 50)).apply()
+    }
+
+    /** 滑动移光标：激活手势所需的最小水平位移（dp）。默认 60，需与按键取消点击阈值对齐。 */
+    private const val KEY_CURSOR_MOVE_ACTIVATION_DP = "cursor_move_activation_dp"
+    private const val DEFAULT_CURSOR_MOVE_ACTIVATION_DP = 60
+
+    fun getCursorMoveActivationDp(context: Context): Int {
+        return getPrefs(context).getInt(KEY_CURSOR_MOVE_ACTIVATION_DP, DEFAULT_CURSOR_MOVE_ACTIVATION_DP)
+            .coerceIn(30, 100)
+    }
+
+    fun setCursorMoveActivationDp(context: Context, activationDp: Int) {
+        getPrefs(context).edit().putInt(KEY_CURSOR_MOVE_ACTIVATION_DP, activationDp.coerceIn(30, 100)).apply()
     }
     
     /** 获取方案偏好的键盘布局，默认全键盘 */

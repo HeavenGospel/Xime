@@ -88,6 +88,7 @@ fun NumberKeyboardLayout(
 
     val swipeBubble = rememberSwipeBubbleController()
     var keyboardBounds by remember { mutableStateOf(Rect(0f, 0f, 0f, 0f)) }
+    ClearSwipeBubbleWhenCursorMoving(swipeBubble)
 
     val isDarkTheme = keyTextColor == Color(0xFFE8EAED)
 
@@ -566,6 +567,7 @@ private fun NumberSymbolKey(
     shadowShapeRadius: Dp = 8.dp,
 ) {
     var isPressed by remember { mutableStateOf(false) }
+    ClearKeyPressWhenCursorMoving { isPressed = false }
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnPress by rememberUpdatedState(onPress)
     val cornerRadius = LocalKeyCornerRadius.current

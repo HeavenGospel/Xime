@@ -118,6 +118,8 @@ class SettingsPreferencesTest {
         assertEquals(0, SettingsPreferences.getVibrationLongPressDuration(context))
         assertEquals(0, SettingsPreferences.getVibrationPressAmplitude(context))
         assertEquals(0, SettingsPreferences.getVibrationLongPressAmplitude(context))
+        assertEquals(0, SettingsPreferences.getVibrationCursorMoveDuration(context))
+        assertEquals(0, SettingsPreferences.getVibrationCursorMoveAmplitude(context))
     }
 
     @Test
@@ -133,6 +135,12 @@ class SettingsPreferencesTest {
 
         SettingsPreferences.setVibrationLongPressAmplitude(context, 200)
         assertEquals(200, SettingsPreferences.getVibrationLongPressAmplitude(context))
+
+        SettingsPreferences.setVibrationCursorMoveDuration(context, 15)
+        assertEquals(15, SettingsPreferences.getVibrationCursorMoveDuration(context))
+
+        SettingsPreferences.setVibrationCursorMoveAmplitude(context, 80)
+        assertEquals(80, SettingsPreferences.getVibrationCursorMoveAmplitude(context))
     }
 
     @Test

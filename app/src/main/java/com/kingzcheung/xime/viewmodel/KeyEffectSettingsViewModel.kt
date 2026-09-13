@@ -17,6 +17,8 @@ data class KeyEffectUiState(
     val longPressDuration: Int = 0,
     val pressAmplitude: Int = 0,
     val longPressAmplitude: Int = 0,
+    val cursorMoveDuration: Int = 0,
+    val cursorMoveAmplitude: Int = 0,
     val hasAmplitudeControl: Boolean = false,
     val swipeUpHintsEnabled: Boolean = true,
     val swipeDownHintsEnabled: Boolean = true
@@ -34,6 +36,8 @@ class KeyEffectSettingsViewModel(application: Application) : AndroidViewModel(ap
         longPressDuration = SettingsPreferences.getVibrationLongPressDuration(context),
         pressAmplitude = SettingsPreferences.getVibrationPressAmplitude(context),
         longPressAmplitude = SettingsPreferences.getVibrationLongPressAmplitude(context),
+        cursorMoveDuration = SettingsPreferences.getVibrationCursorMoveDuration(context),
+        cursorMoveAmplitude = SettingsPreferences.getVibrationCursorMoveAmplitude(context),
         swipeUpHintsEnabled = SettingsPreferences.isSwipeUpHintsEnabled(context),
         swipeDownHintsEnabled = SettingsPreferences.isSwipeDownHintsEnabled(context)
     ))
@@ -93,6 +97,16 @@ class KeyEffectSettingsViewModel(application: Application) : AndroidViewModel(ap
     fun setLongPressAmplitude(amplitude: Int) {
         SettingsPreferences.setVibrationLongPressAmplitude(context, amplitude)
         _uiState.update { it.copy(longPressAmplitude = amplitude) }
+    }
+
+    fun setCursorMoveDuration(duration: Int) {
+        SettingsPreferences.setVibrationCursorMoveDuration(context, duration)
+        _uiState.update { it.copy(cursorMoveDuration = duration) }
+    }
+
+    fun setCursorMoveAmplitude(amplitude: Int) {
+        SettingsPreferences.setVibrationCursorMoveAmplitude(context, amplitude)
+        _uiState.update { it.copy(cursorMoveAmplitude = amplitude) }
     }
 
     fun setSwipeUpHintsEnabled(enabled: Boolean) {

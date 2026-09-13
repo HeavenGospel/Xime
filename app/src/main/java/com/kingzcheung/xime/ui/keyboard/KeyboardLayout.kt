@@ -216,6 +216,7 @@ fun KeyboardLayout(
 
     val swipeBubble = rememberSwipeBubbleController()
     var keyboardBounds by remember { mutableStateOf(Rect(0f, 0f, 0f, 0f)) }
+    ClearSwipeBubbleWhenCursorMoving(swipeBubble)
 
     // 监听手势配置版本号，部署后强制刷新键帽显示
     val cfgVer by KeysConfigHelper.configVersion.collectAsState()
@@ -1061,6 +1062,7 @@ private fun ShiftCapsKeyButton(
     shadowShapeRadius: Dp = 8.dp,
 ) {
     var isPressed by remember { mutableStateOf(false) }
+    ClearKeyPressWhenCursorMoving { isPressed = false }
     val density = LocalDensity.current
 
     val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius, density, backgroundColor) {
@@ -1660,6 +1662,12 @@ fun SwipeableKeyButtonLandscape(
     var isSwipeDown by remember { mutableStateOf(false) }
     var buttonBounds by remember { mutableStateOf(Rect(0f, 0f, 0f, 0f)) }
     var dragActivated by remember { mutableStateOf(false) }
+    var cancelClickDueToCursorMove by remember { mutableStateOf(false) }
+    val cursorMoveActive = LocalCursorMoveActive.current
+    ClearKeyPressWhenCursorMoving {
+        isPressed = false
+        cancelClickDueToCursorMove = true
+    }
 
     val currentText by rememberUpdatedState(text)
     val currentSwipeText by rememberUpdatedState(swipeText)
@@ -1682,6 +1690,7 @@ fun SwipeableKeyButtonLandscape(
     val swipeDownThreshold = with(density) { 15.dp.toPx() }
     val bubbleShowThresholdUp = swipeUpThreshold * 0.3f
     val bubbleShowThresholdDown = swipeDownThreshold * 0.3f
+    val cursorMoveActivationDp = LocalCursorMoveActivationDp.current
 
     val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius, density, backgroundColor) {
         if (shadowEnabled) {
@@ -1714,10 +1723,11 @@ fun SwipeableKeyButtonLandscape(
         modifier = modifier
             .fillMaxHeight()
             .fillMaxWidth()
-            .pointerInput(currentText, currentLongPressItems.isNullOrEmpty(), currentOnLongPressSelect != null) {
+            .pointerInput(currentText, currentLongPressItems.isNullOrEmpty(), currentOnLongPressSelect != null, cursorMoveActivationDp) {
                 if (currentLongPressItems.isNullOrEmpty() || currentOnLongPressSelect == null) {
                     detectTapGestures(
                         onPress = {
+                            cancelClickDueToCursorMove = false
                             isPressed = true
                             currentOnSwipeStateChange?.invoke(SwipeState(isPressed = true, pressedText = currentText), buttonBounds)
                             currentOnPress?.invoke()
@@ -1727,12 +1737,17 @@ fun SwipeableKeyButtonLandscape(
                             currentOnSwipeStateChange?.invoke(SwipeState(), buttonBounds)
                         },
                         onTap = {
-                            if (!dragActivated && !hasTriggeredSwipeUp && !hasTriggeredSwipeDown) currentOnClick()
+                            if (!dragActivated && !hasTriggeredSwipeUp && !hasTriggeredSwipeDown &&
+                                !cursorMoveActive.value && !cancelClickDueToCursorMove
+                            ) {
+                                currentOnClick()
+                            }
                         }
                     )
                 } else {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
+                        cancelClickDueToCursorMove = false
                         isPressed = true
                         var localLongPressTriggered = false
                         var selectedIdx = 0
@@ -1807,7 +1822,7 @@ fun SwipeableKeyButtonLandscape(
                                         if (selected != null) {
                                             currentOnLongPressSelect?.invoke(selected)
                                         }
-                                    } else if (!dragActivated) {
+                                    } else if (!dragActivated && !cursorMoveActive.value && !cancelClickDueToCursorMove) {
                                         // 不能用 swipeDetected 抑制点击：swipeDetected 由 5dp 位移触发，
                                         // 而 dragActivated 由 touch slop（更大）触发。5dp~touchSlop 区间
                                         // 若被 swipeDetected 吞掉点击且 drag 未激活，会造成快速打字漏键。
@@ -1827,9 +1842,10 @@ fun SwipeableKeyButtonLandscape(
             }
             .then(
                 if (swipeText != null || swipeDownText != null) {
-                    Modifier.pointerInput(Unit) {
+                    Modifier.pointerInput(cursorMoveActivationDp) {
                         detectDragGestures(
                             onDragStart = {
+                                cancelClickDueToCursorMove = false
                                 dragActivated = true
                                 isPressed = true
                                 dragOffsetY = 0f
@@ -1840,8 +1856,11 @@ fun SwipeableKeyButtonLandscape(
                                 currentOnSwipeStateChange?.invoke(SwipeState(isPressed = true, pressedText = currentText), buttonBounds)
                             },
                             onDragEnd = {
-                                if (!hasTriggeredSwipeUp && !hasTriggeredSwipeDown && dragOffsetY > swipeUpThreshold && dragOffsetY < swipeDownThreshold) {
-                                    onClick()
+                                if (!hasTriggeredSwipeUp && !hasTriggeredSwipeDown &&
+                                    dragOffsetY > swipeUpThreshold && dragOffsetY < swipeDownThreshold &&
+                                    !cursorMoveActive.value && !cancelClickDueToCursorMove
+                                ) {
+                                    currentOnClick()
                                 }
                                 dragActivated = false
                                 isPressed = false

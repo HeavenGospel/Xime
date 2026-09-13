@@ -80,6 +80,12 @@ import kotlin.math.roundToInt
 
 val LocalStretchFactor = compositionLocalOf { 1f }
 val LocalSuppressCursorMove = compositionLocalOf { mutableStateOf(false) }
+/** 全键盘横向滑动移光标手势已激活；按键据此取消按下态与气泡、并抑制抬手点击。 */
+val LocalCursorMoveActive = compositionLocalOf { mutableStateOf(false) }
+/** 滑动移光标步进距离（dp），越小越灵敏。 */
+val LocalCursorMoveStepDp = compositionLocalOf { 25 }
+/** 滑动移光标激活距离（dp），与按键取消点击阈值对齐。 */
+val LocalCursorMoveActivationDp = compositionLocalOf { 60 }
 
 @Composable
 fun KeyboardView(
@@ -438,9 +444,17 @@ fun KeyboardView(
                     onClearAssociation = {
                         onHapticFeedback?.invoke()
                         if (showHandwritingCandidates) {
+                            // 清空：清除笔画/候选，并撤销本次手写会话已上屏文本
+                            if (!isHandwritingLookup && handwritingTail.isNotEmpty()) {
+                                callbacks.onHandwritingAutoCommit?.invoke("", handwritingTail)
+                            }
+                            handwritingTail = ""
+                            handwritingActiveLen = 0
+                            handwritingLastSegLen = 0
                             handwritingCandidates = emptyList()
                             handwritingComments = emptyList()
                             handwritingClearSignal++
+                            callbacks.onClearAssociation?.invoke()
                         } else {
                             callbacks.onClearAssociation?.invoke()
                         }
@@ -525,14 +539,19 @@ fun KeyboardView(
                 val mainType = (page as KeyboardPage.Main).type
                 when (mainType) {
                     MainType.FULL -> {
+                        val context = LocalContext.current
+                        val cursorMoveStepDp = SettingsPreferences.getCursorMoveStepDp(context)
+                        val cursorMoveActivationDp = SettingsPreferences.getCursorMoveActivationDp(context)
                         val currentOnCursorMove = rememberUpdatedState(callbacks.onCursorMove)
                         val suppressCursorMove = remember { mutableStateOf(false) }
+                        val cursorMoveActive = remember { mutableStateOf(false) }
                         val cursorMod = if (callbacks.onCursorMove != null) {
-                            Modifier.pointerInput(Unit) {
-                                val stepThresholdPx = 25.dp.toPx()
-                                val activationThresholdPx = 60.dp.toPx()
+                            Modifier.pointerInput(cursorMoveStepDp, cursorMoveActivationDp) {
+                                val stepThresholdPx = cursorMoveStepDp.dp.toPx()
+                                val activationThresholdPx = cursorMoveActivationDp.dp.toPx()
                                 awaitEachGesture {
                                     suppressCursorMove.value = false
+                                    cursorMoveActive.value = false
                                     val down = awaitFirstDown(requireUnconsumed = false)
                                     var isCursorGesture = false
                                     var lastSteps = 0
@@ -555,6 +574,7 @@ fun KeyboardView(
 
                                             if (!isCursorGesture && abs(dx) > activationThresholdPx) {
                                                 isCursorGesture = true
+                                                cursorMoveActive.value = true
                                                 activationAnchorX = change.position.x
                                             }
 
@@ -570,13 +590,12 @@ fun KeyboardView(
                                             }
                                         }
                                     } while (true)
+                                    cursorMoveActive.value = false
                                 }
                             }
                         } else {
                             Modifier
                         }
-
-                        val context = LocalContext.current
 
                         var modeChangeTarget: KeyboardLayoutAction by remember {
                             mutableStateOf(
@@ -743,6 +762,9 @@ fun KeyboardView(
                         }
                         CompositionLocalProvider(
                             LocalSuppressCursorMove provides suppressCursorMove,
+                            LocalCursorMoveActive provides cursorMoveActive,
+                            LocalCursorMoveStepDp provides cursorMoveStepDp,
+                            LocalCursorMoveActivationDp provides cursorMoveActivationDp,
                         ) {
                             KeyboardLayoutScreen(
                                 keyboardState = keyboardState,

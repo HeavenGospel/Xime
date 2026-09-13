@@ -56,6 +56,8 @@ class FeedbackManager(private val context: Context) {
     private var longPressDuration = 0L
     private var pressAmplitude = 0
     private var longPressAmplitude = 0
+    private var cursorMoveDuration = 0L
+    private var cursorMoveAmplitude = 0
 
     private var prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
 
@@ -102,6 +104,8 @@ class FeedbackManager(private val context: Context) {
         longPressDuration = SettingsPreferences.getVibrationLongPressDuration(context).toLong()
         pressAmplitude = SettingsPreferences.getVibrationPressAmplitude(context)
         longPressAmplitude = SettingsPreferences.getVibrationLongPressAmplitude(context)
+        cursorMoveDuration = SettingsPreferences.getVibrationCursorMoveDuration(context).toLong()
+        cursorMoveAmplitude = SettingsPreferences.getVibrationCursorMoveAmplitude(context)
     }
 
     private fun registerPrefsListener() {
@@ -116,6 +120,8 @@ class FeedbackManager(private val context: Context) {
                 "vibration_long_press_duration" -> longPressDuration = SettingsPreferences.getVibrationLongPressDuration(context).toLong()
                 "vibration_press_amplitude" -> pressAmplitude = SettingsPreferences.getVibrationPressAmplitude(context)
                 "vibration_long_press_amplitude" -> longPressAmplitude = SettingsPreferences.getVibrationLongPressAmplitude(context)
+                "vibration_cursor_move_duration" -> cursorMoveDuration = SettingsPreferences.getVibrationCursorMoveDuration(context).toLong()
+                "vibration_cursor_move_amplitude" -> cursorMoveAmplitude = SettingsPreferences.getVibrationCursorMoveAmplitude(context)
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
@@ -177,6 +183,61 @@ class FeedbackManager(private val context: Context) {
             }
             view.performHapticFeedback(hfc, flags)
         }
+    }
+
+    /**
+     * 滑动键盘移动光标时的短振动。
+     * 自定义时长/振幅均为 0 时使用系统 [HapticFeedbackConstants.CLOCK_TICK] / TEXT_HANDLE_MOVE。
+     */
+    fun cursorMoveHaptic(view: View) {
+        when (hapticMode) {
+            HapticMode.Enabled -> {}
+            HapticMode.Disabled -> return
+            HapticMode.FollowingSystem -> {
+                val systemEnabled = try {
+                    Settings.System.getInt(
+                        context.contentResolver,
+                        Settings.System.HAPTIC_FEEDBACK_ENABLED,
+                        1
+                    ) == 1
+                } catch (_: Exception) {
+                    true
+                }
+                if (!systemEnabled) return
+            }
+        }
+
+        if (cursorMoveDuration != 0L) {
+            if (hasAmplitudeControl && cursorMoveAmplitude != 0) {
+                vibrator.vibrate(VibrationEffect.createOneShot(cursorMoveDuration, cursorMoveAmplitude))
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(cursorMoveDuration, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(cursorMoveDuration)
+            }
+            return
+        }
+
+        // 仅设置振幅时：用短脉冲体现强度
+        if (hasAmplitudeControl && cursorMoveAmplitude != 0) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(12L, cursorMoveAmplitude))
+            }
+            return
+        }
+
+        val hfc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            HapticFeedbackConstants.TEXT_HANDLE_MOVE
+        } else {
+            HapticFeedbackConstants.CLOCK_TICK
+        }
+        var flags = HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING
+        if (hapticMode == HapticMode.Enabled) {
+            @Suppress("DEPRECATION")
+            flags = flags or HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING
+        }
+        view.performHapticFeedback(hfc, flags)
     }
 
     fun performKeyPressEffect(keyType: String = "standard", view: View) {

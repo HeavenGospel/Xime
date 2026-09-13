@@ -203,6 +203,7 @@ internal fun rememberImeKeyboardCallbacks(
             onCursorMove = { direction ->
                 val ic = service.currentInputConnection
                 if (ic != null && direction != 0) {
+                    service.feedbackManager.cursorMoveHaptic(view)
                     if (SettingsPreferences.getInputTextLocation(service) == SettingsPreferences.INPUT_TEXT_INPUT_BOX &&
                         service.candidateState.value.isComposing
                     ) {

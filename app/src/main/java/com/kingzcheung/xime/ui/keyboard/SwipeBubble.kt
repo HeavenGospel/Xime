@@ -6,6 +6,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -108,12 +109,39 @@ class SwipeBubbleController(private val scope: CoroutineScope) {
         state = newState
         keyBounds = bounds
     }
+
+    /** 立即清除气泡（如滑动移光标激活时），不做抬起滞留。 */
+    fun clearImmediate() {
+        releaseJob?.cancel()
+        releaseJob = null
+        state = SwipeState()
+    }
 }
 
 @Composable
 fun rememberSwipeBubbleController(): SwipeBubbleController {
     val scope = rememberCoroutineScope()
     return remember { SwipeBubbleController(scope) }
+}
+
+/** 滑动移光标激活时立即去掉按压气泡，避免起始键气泡残留。 */
+@Composable
+fun ClearSwipeBubbleWhenCursorMoving(controller: SwipeBubbleController) {
+    val cursorMoveActive = LocalCursorMoveActive.current
+    val active = cursorMoveActive.value
+    LaunchedEffect(active) {
+        if (active) controller.clearImmediate()
+    }
+}
+
+/** 滑动移光标激活时取消按键按下高亮。 */
+@Composable
+fun ClearKeyPressWhenCursorMoving(onClear: () -> Unit) {
+    val cursorMoveActive = LocalCursorMoveActive.current
+    val active = cursorMoveActive.value
+    LaunchedEffect(active) {
+        if (active) onClear()
+    }
 }
 
 @Composable

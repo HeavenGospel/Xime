@@ -155,6 +155,12 @@ fun KeyButton(
     var isSwipeDown by remember { mutableStateOf(false) }
     var longPressActivated by remember { mutableStateOf(false) }
     var dragActivated by remember { mutableStateOf(false) }
+    var cancelClickDueToCursorMove by remember { mutableStateOf(false) }
+    val cursorMoveActive = LocalCursorMoveActive.current
+    ClearKeyPressWhenCursorMoving {
+        isPressed = false
+        cancelClickDueToCursorMove = true
+    }
     
     val density = LocalDensity.current
     val view = LocalView.current
@@ -168,9 +174,9 @@ fun KeyButton(
     val bubbleShowThresholdUp = swipeUpThreshold
     val bubbleShowThresholdDown = swipeDownThreshold
     // 水平位移超过该值视为横向手势（如键盘区滑动移动光标），不再触发点击。
-    // 与 KeyboardView 光标手势激活阈值（activationThresholdPx = 60dp）对齐，
-    // 消除 30~60dp 位移区间"点击被取消但光标手势未激活"的死区（打字吃键）。
-    val horizontalClickCancelThreshold = with(density) { 60.dp.toPx() }
+    // 与 KeyboardView 光标手势激活阈值对齐，消除激活前死区（打字吃键）。
+    val cursorMoveActivationDp = LocalCursorMoveActivationDp.current
+    val horizontalClickCancelThreshold = with(density) { cursorMoveActivationDp.dp.toPx() }
 
     val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius, density, backgroundColor) {
         if (shadowEnabled) {
@@ -204,9 +210,10 @@ fun KeyButton(
             modifier = modifier
                 .fillMaxHeight()
                 .fillMaxWidth()
-                .pointerInput(Unit) {
+                .pointerInput(cursorMoveActivationDp) {
                     detectDragGestures(
                         onDragStart = {
+                            cancelClickDueToCursorMove = false
                             dragActivated = true
                             isPressed = true
                             dragOffsetX = 0f
@@ -217,7 +224,9 @@ fun KeyButton(
                             isSwipeDown = false
                         },
                         onDragEnd = {
-                            val shouldClick = !hasTriggeredSwipeUp && !hasTriggeredSwipeDown && abs(dragOffsetX) < horizontalClickCancelThreshold
+                            val shouldClick = !hasTriggeredSwipeUp && !hasTriggeredSwipeDown &&
+                                abs(dragOffsetX) < horizontalClickCancelThreshold &&
+                                !cursorMoveActive.value && !cancelClickDueToCursorMove
                             if (shouldClick) {
                                 currentOnClick()
                             }
@@ -281,10 +290,11 @@ fun KeyButton(
                         }
                     )
                 }
-                .pointerInput(currentOnLongClick != null) {
+                .pointerInput(currentOnLongClick != null, cursorMoveActivationDp) {
                     if (currentOnLongClick == null) {
                         detectTapGestures(
                             onPress = {
+                                cancelClickDueToCursorMove = false
                                 isPressed = true
                                 onPress?.invoke()
                                 val released = tryAwaitRelease()
@@ -297,12 +307,17 @@ fun KeyButton(
                                 }
                             },
                             onTap = {
-                                if (!dragActivated && !hasTriggeredSwipeUp && !hasTriggeredSwipeDown) currentOnClick()
+                                if (!dragActivated && !hasTriggeredSwipeUp && !hasTriggeredSwipeDown &&
+                                    !cursorMoveActive.value && !cancelClickDueToCursorMove
+                                ) {
+                                    currentOnClick()
+                                }
                             }
                         )
                     } else {
                         detectTapGestures(
                             onPress = {
+                                cancelClickDueToCursorMove = false
                                 isPressed = true
                                 longPressActivated = false
                                 onPress?.invoke()
@@ -313,7 +328,9 @@ fun KeyButton(
                                 }
                             },
                             onTap = {
-                                if (!dragActivated && !hasTriggeredSwipeUp && !hasTriggeredSwipeDown && !longPressActivated) {
+                                if (!dragActivated && !hasTriggeredSwipeUp && !hasTriggeredSwipeDown && !longPressActivated &&
+                                    !cursorMoveActive.value && !cancelClickDueToCursorMove
+                                ) {
                                     currentOnClick()
                                 }
                                 longPressActivated = false
@@ -418,6 +435,12 @@ fun SwipeableKeyButton(
     var isSwipeDown by remember { mutableStateOf(false) }
     var buttonBounds by remember { mutableStateOf(Rect(0f, 0f, 0f, 0f)) }
     var dragActivated by remember { mutableStateOf(false) }
+    var cancelClickDueToCursorMove by remember { mutableStateOf(false) }
+    val cursorMoveActive = LocalCursorMoveActive.current
+    ClearKeyPressWhenCursorMoving {
+        isPressed = false
+        cancelClickDueToCursorMove = true
+    }
     
     val currentText by rememberUpdatedState(text)
     val currentSwipeText by rememberUpdatedState(swipeText)
@@ -440,9 +463,9 @@ fun SwipeableKeyButton(
     val bubbleShowThresholdUp = swipeUpThreshold
     val bubbleShowThresholdDown = swipeDownThreshold
     // 水平位移超过该值视为横向手势（如键盘区滑动移动光标），不再触发点击。
-    // 与 KeyboardView 光标手势激活阈值（activationThresholdPx = 60dp）对齐，
-    // 消除 30~60dp 位移区间"点击被取消但光标手势未激活"的死区（打字吃键）。
-    val horizontalClickCancelThreshold = with(density) { 60.dp.toPx() }
+    // 与 KeyboardView 光标手势激活阈值对齐，消除激活前死区（打字吃键）。
+    val cursorMoveActivationDp = LocalCursorMoveActivationDp.current
+    val horizontalClickCancelThreshold = with(density) { cursorMoveActivationDp.dp.toPx() }
 
     val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius, density, backgroundColor) {
         if (shadowEnabled) {
@@ -468,9 +491,10 @@ fun SwipeableKeyButton(
         modifier = modifier
             .fillMaxHeight()
             .fillMaxWidth()
-            .pointerInput(Unit) {
+            .pointerInput(cursorMoveActivationDp) {
                 detectDragGestures(
                     onDragStart = {
+                        cancelClickDueToCursorMove = false
                         dragActivated = true
                         isPressed = true
                         dragOffsetX = 0f
@@ -481,7 +505,9 @@ fun SwipeableKeyButton(
                         isSwipeDown = false
                     },
                     onDragEnd = {
-                        val shouldClick = !hasTriggeredSwipeUp && !hasTriggeredSwipeDown && abs(dragOffsetX) < horizontalClickCancelThreshold
+                        val shouldClick = !hasTriggeredSwipeUp && !hasTriggeredSwipeDown &&
+                            abs(dragOffsetX) < horizontalClickCancelThreshold &&
+                            !cursorMoveActive.value && !cancelClickDueToCursorMove
                         if (shouldClick) {
                             currentOnClick()
                         }
@@ -548,10 +574,11 @@ fun SwipeableKeyButton(
                     }
                 )
             }
-            .pointerInput(text, currentLongPressItems.isNullOrEmpty()) {
+            .pointerInput(text, currentLongPressItems.isNullOrEmpty(), cursorMoveActivationDp) {
                 if (currentLongPressItems.isNullOrEmpty()) {
                     detectTapGestures(
                         onPress = {
+                            cancelClickDueToCursorMove = false
                             isPressed = true
                             currentOnSwipeStateChange?.invoke(SwipeState(isPressed = true, pressedText = currentText), buttonBounds)
                             currentOnPress?.invoke()
@@ -563,7 +590,11 @@ fun SwipeableKeyButton(
                             }
                         },
                         onTap = {
-                            if (!dragActivated && !hasTriggeredSwipeUp && !hasTriggeredSwipeDown) currentOnClick()
+                            if (!dragActivated && !hasTriggeredSwipeUp && !hasTriggeredSwipeDown &&
+                                !cursorMoveActive.value && !cancelClickDueToCursorMove
+                            ) {
+                                currentOnClick()
+                            }
                         }
                     )
                     return@pointerInput
@@ -571,6 +602,7 @@ fun SwipeableKeyButton(
                 
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
+                    cancelClickDueToCursorMove = false
                     isPressed = true
                     var localLongPressTriggered = false
                     var selectedIdx = 0
@@ -649,7 +681,7 @@ fun SwipeableKeyButton(
                                     if (selected != null) {
                                         currentOnLongPressSelect?.invoke(selected)
                                     }
-                                } else if (!dragActivated) {
+                                } else if (!dragActivated && !cursorMoveActive.value && !cancelClickDueToCursorMove) {
                                     // 注意：不能再用 swipeDetected 抑制点击——swipeDetected 由 5dp 位移触发，
                                     // 而 dragActivated 由 touch slop（更大）触发。两者之间的位移区间
                                     // （5dp~touchSlop）若被 swipeDetected 吞掉点击，且 drag 未激活无 dragEnd
@@ -884,6 +916,12 @@ fun IconKeyButton(
     shadowShapeRadius: Dp = 8.dp,
 ) {
     var isPressed by remember { mutableStateOf(false) }
+    var cancelClickDueToCursorMove by remember { mutableStateOf(false) }
+    val cursorMoveActive = LocalCursorMoveActive.current
+    ClearKeyPressWhenCursorMoving {
+        isPressed = false
+        cancelClickDueToCursorMove = true
+    }
     val density = LocalDensity.current
 
     val shadowModifier = remember(shadowEnabled, shadowElevation, shadowShapeRadius, density, backgroundColor) {
@@ -921,6 +959,7 @@ fun IconKeyButton(
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
+                        cancelClickDueToCursorMove = false
                         isPressed = true
                         onPress?.invoke()
                         tryAwaitRelease()
@@ -928,7 +967,9 @@ fun IconKeyButton(
                         onRelease?.invoke()
                     },
                     onTap = {
-                        onClick()
+                        if (!cursorMoveActive.value && !cancelClickDueToCursorMove) {
+                            onClick()
+                        }
                     }
                 )
             }
@@ -1004,6 +1045,12 @@ fun SwipeableIconKeyButton(
     var hasTriggeredLongPress by remember { mutableStateOf(false) }
     var buttonBounds by remember { mutableStateOf(Rect(0f, 0f, 0f, 0f)) }
     var dragActivated by remember { mutableStateOf(false) }
+    var cancelClickDueToCursorMove by remember { mutableStateOf(false) }
+    val cursorMoveActive = LocalCursorMoveActive.current
+    ClearKeyPressWhenCursorMoving {
+        isPressed = false
+        cancelClickDueToCursorMove = true
+    }
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnRelease by rememberUpdatedState(onRelease)
     val keyLabelFontFamily = AppFonts.keyLabelFontFamily
@@ -1019,9 +1066,9 @@ fun SwipeableIconKeyButton(
     val clearActionThreshold = with(density) { (-50).dp.toPx() }
     val undoActionThreshold = with(density) { 50.dp.toPx() }
     // 水平位移超过该值视为横向手势（如键盘区滑动移动光标），不再触发点击。
-    // 与 KeyboardView 光标手势激活阈值（activationThresholdPx = 60dp）对齐，
-    // 消除 30~60dp 位移区间"点击被取消但光标手势未激活"的死区（打字吃键）。
-    val horizontalClickCancelThreshold = with(density) { 60.dp.toPx() }
+    // 与 KeyboardView 光标手势激活阈值对齐，消除激活前死区（打字吃键）。
+    val cursorMoveActivationDp = LocalCursorMoveActivationDp.current
+    val horizontalClickCancelThreshold = with(density) { cursorMoveActivationDp.dp.toPx() }
     
     LaunchedEffect(isLongPress) {
         if (isLongPress && onLongClick != null) {
@@ -1066,9 +1113,10 @@ fun SwipeableIconKeyButton(
         modifier = modifier
             .fillMaxHeight()
             .fillMaxWidth()
-            .pointerInput(Unit) {
+            .pointerInput(cursorMoveActivationDp) {
                 detectTapGestures(
                     onPress = {
+                        cancelClickDueToCursorMove = false
                         isPressed = true
                         onPress?.invoke()
                         val released = tryAwaitRelease()
@@ -1084,8 +1132,10 @@ fun SwipeableIconKeyButton(
                         }
                     },
                     onTap = {
-                        if (!dragActivated && !isDragging && !hasTriggeredLongPress) {
-                            onClick()
+                        if (!dragActivated && !isDragging && !hasTriggeredLongPress &&
+                            !cursorMoveActive.value && !cancelClickDueToCursorMove
+                        ) {
+                            currentOnClick()
                         }
                         hasTriggeredLongPress = false
                     },
@@ -1094,9 +1144,10 @@ fun SwipeableIconKeyButton(
                     }
                 )
             }
-            .pointerInput(Unit) {
+            .pointerInput(cursorMoveActivationDp) {
                 detectDragGestures(
                     onDragStart = {
+                        cancelClickDueToCursorMove = false
                         dragActivated = true
                         isDragging = true
                         isPressed = true
@@ -1124,7 +1175,10 @@ fun SwipeableIconKeyButton(
                         } else if (dragOffsetY < swipeUpThreshold && !hasTriggeredSwipe && onSwipe != null) {
                             hasTriggeredSwipe = true
                             onSwipe()
-                        } else if (!hasTriggeredLongPress && !hasTriggeredSwipeLeft) {
+                        } else if (!hasTriggeredLongPress && !hasTriggeredSwipeLeft &&
+                            abs(dragOffsetX) < horizontalClickCancelThreshold &&
+                            !cursorMoveActive.value && !cancelClickDueToCursorMove
+                        ) {
                             currentOnClick()
                         }
                         dragActivated = false

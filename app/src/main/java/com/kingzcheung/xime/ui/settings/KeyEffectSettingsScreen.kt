@@ -328,6 +328,70 @@ fun KeyEffectSettingsContent(
                             }
                         }
 
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = 16.dp),
+                            thickness = 0.5.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "滑动移光标振动时长",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (uiState.cursorMoveDuration == 0) "系统默认" else "${uiState.cursorMoveDuration} ms",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Slider(
+                                value = uiState.cursorMoveDuration.toFloat(),
+                                onValueChange = { viewModel.setCursorMoveDuration(it.toInt()) },
+                                valueRange = 0f..100f,
+                                steps = 19
+                            )
+                        }
+
+                        if (uiState.hasAmplitudeControl) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = 16.dp),
+                                thickness = 0.5.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "滑动移光标振动强度",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = if (uiState.cursorMoveAmplitude == 0) "系统默认" else "${uiState.cursorMoveAmplitude}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Slider(
+                                    value = uiState.cursorMoveAmplitude.toFloat(),
+                                    onValueChange = { viewModel.setCursorMoveAmplitude(it.toInt()) },
+                                    valueRange = 0f..255f,
+                                    steps = 50
+                                )
+                            }
+                        }
+
                         Text(
                             text = "当自定义时长和振幅均设为 0 时（即「系统默认」），将使用系统默认的触觉反馈效果。",
                             style = MaterialTheme.typography.bodySmall,

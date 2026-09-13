@@ -362,6 +362,94 @@ fun LayoutDisplaySettingsContent(
                             }
                         )
                     }
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    var cursorMoveStepSlider by remember {
+                        mutableStateOf(SettingsPreferences.getCursorMoveStepDp(context).toFloat())
+                    }
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "滑动移光标步进",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "${cursorMoveStepSlider.toInt()} dp",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "数值越小越灵敏",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Slider(
+                            value = cursorMoveStepSlider,
+                            onValueChange = { cursorMoveStepSlider = it },
+                            onValueChangeFinished = {
+                                SettingsPreferences.setCursorMoveStepDp(context, cursorMoveStepSlider.toInt())
+                            },
+                            valueRange = 10f..50f,
+                            steps = 39
+                        )
+                    }
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    var cursorMoveActivationSlider by remember {
+                        mutableStateOf(SettingsPreferences.getCursorMoveActivationDp(context).toFloat())
+                    }
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "滑动移光标激活距离",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "${cursorMoveActivationSlider.toInt()} dp",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "开始移光标前需滑动的距离",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Slider(
+                            value = cursorMoveActivationSlider,
+                            onValueChange = { cursorMoveActivationSlider = it },
+                            onValueChangeFinished = {
+                                SettingsPreferences.setCursorMoveActivationDp(context, cursorMoveActivationSlider.toInt())
+                            },
+                            valueRange = 30f..100f,
+                            steps = 69
+                        )
+                    }
                 })
             }
         }

@@ -91,6 +91,7 @@ fun CommonSymbolKeyboardLayout(
     val suppressCursorMove = LocalSuppressCursorMove.current
     val swipeBubble = rememberSwipeBubbleController()
     var keyboardBounds by remember { mutableStateOf(Rect(0f, 0f, 0f, 0f)) }
+    ClearSwipeBubbleWhenCursorMoving(swipeBubble)
 
     fun processSwipeState(state: SwipeState, bounds: Rect) {
         swipeBubble.update(
