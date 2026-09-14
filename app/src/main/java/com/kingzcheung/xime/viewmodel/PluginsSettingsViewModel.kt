@@ -140,15 +140,17 @@ class PluginsSettingsViewModel(application: Application) : AndroidViewModel(appl
     }
     
     fun setPluginEnabled(pluginId: String, enabled: Boolean) {
+        // prefs：运行时过滤（ExtensionManager.getEnabled*）
+        // XML：冷启动 loadEnabledPlugins 依据；二者必须同步
         SettingsPreferences.setPluginEnabled(context, pluginId, enabled)
-        
+
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
+                PluginManager.setPluginEnabled(pluginId, enabled)
                 if (enabled) {
                     PluginManager.launchPlugin(pluginId)
-                } else {
-                    PluginManager.unloadPlugin(pluginId)
                 }
+                // 禁用时 PluginManager.setPluginEnabled 已 unload
             }
         }
     }

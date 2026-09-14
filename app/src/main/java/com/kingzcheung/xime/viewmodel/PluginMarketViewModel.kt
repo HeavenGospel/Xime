@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kingzcheung.xime.plugin.core.runtime.PluginManager
+import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.settings.XimeIndexSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -153,6 +154,14 @@ class PluginMarketViewModel(application: Application) : AndroidViewModel(applica
                     _uiState.update { it.copy(downloadProgress = progress) }
                 },
             )
+            // 安装成功后立即加载，避免管理页显示「已启用」但输入法侧尚未实例化
+            if (result.success) {
+                withContext(Dispatchers.IO) {
+                    SettingsPreferences.setPluginEnabled(context, pluginId, true)
+                    PluginManager.setPluginEnabled(pluginId, true)
+                    PluginManager.launchPlugin(pluginId)
+                }
+            }
             // 刷新已安装状态（含版本号，供 hasUpdate 判断）
             val installed = withContext(Dispatchers.IO) { installedVersions() }
             _uiState.update { st ->

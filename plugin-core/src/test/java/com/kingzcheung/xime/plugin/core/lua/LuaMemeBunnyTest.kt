@@ -29,13 +29,12 @@ class LuaMemeBunnyTest {
         assertEquals(listOf("恶搞兔"), cats)
 
         // 表情：6 张图片，imageUrl 指向 resources/emojis/ 下真实文件
+        val query = org.luaj.vm2.LuaTable()
+        query.set("category", "")
+        query.set("keyword", "")
+        query.set("topK", 10)
         val emojis = LuaScriptRuntime.tableToList(
-            runtime.call(
-                "getEmojis",
-                LuaValue.valueOf(""),
-                LuaValue.valueOf(""),
-                LuaValue.valueOf(10)
-            )
+            runtime.call("getEmojis", query)
         )
         assertTrue("应返回全部表情（>=6）", emojis.size >= 6)
 

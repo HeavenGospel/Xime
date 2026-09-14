@@ -180,22 +180,24 @@ object ExtensionManager {
                                 topK = 100
                             )
                         )
-                        if (emojiItems.isNotEmpty()) {
-                            val emojiCap = pluginInfo?.capabilities?.emoji
-                            pluginCategories.add(
-                                EmojiCategory(
-                                    name = subCatName,
-                                    icon = "🎭",
-                                    pluginIcon = pluginIcon,
-                                    emojis = emptyList(),
-                                    isPlugin = true,
-                                    pluginId = pluginId,
-                                    emojiItems = emojiItems,
-                                    layoutColumns = emojiCap?.columns ?: 8,
-                                    layoutItemHeightDp = emojiCap?.itemHeightDp ?: 40
-                                )
-                            )
+                        if (emojiItems.isEmpty()) {
+                            // 仍注册分类，避免「已启用却无 Tab」；资源缺失时至少能看到空面板
+                            Log.w(TAG, "getEmojis empty for $pluginId / $subCatName")
                         }
+                        val emojiCap = pluginInfo?.capabilities?.emoji
+                        pluginCategories.add(
+                            EmojiCategory(
+                                name = subCatName,
+                                icon = "🎭",
+                                pluginIcon = pluginIcon,
+                                emojis = emptyList(),
+                                isPlugin = true,
+                                pluginId = pluginId,
+                                emojiItems = emojiItems,
+                                layoutColumns = emojiCap?.columns ?: 8,
+                                layoutItemHeightDp = emojiCap?.itemHeightDp ?: 40
+                            )
+                        )
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error preloading from ${pluginInfo?.name}", e)

@@ -60,6 +60,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -548,7 +549,7 @@ private fun ExtensionItem(
                             }
                         }
                     } else {
-                        // 多选分类：插件管理不提供启用开关，启用/停用在使用处进行（如表情面板）
+                        // 多选分类（表情/工具等）：在此启用后立即加载，输入法表情面板会出现对应 Tab
                         Text(
                             text = when {
                                 !hostCompatible -> "不兼容"
@@ -565,6 +566,24 @@ private fun ExtensionItem(
                         )
 
                         Spacer(modifier = Modifier.weight(1f))
+
+                        if (hostCompatible) {
+                            Switch(
+                                checked = isEnabled,
+                                onCheckedChange = { checked ->
+                                    val apply = {
+                                        isEnabled = checked
+                                        viewModel.setPluginEnabled(extension.id, checked)
+                                    }
+                                    if (!checked || extension.trustLevel == TrustLevel.TRUSTED) {
+                                        apply()
+                                    } else {
+                                        trustConfirmAction = apply
+                                        showTrustConfirm = true
+                                    }
+                                }
+                            )
+                        }
                     }
 
                     // 设置按钮

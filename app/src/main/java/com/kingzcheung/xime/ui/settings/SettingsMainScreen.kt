@@ -26,6 +26,7 @@ import androidx.compose.material.icons.twotone.Ballot
 
 import androidx.compose.material.icons.twotone.Build
 import androidx.compose.material.icons.twotone.Description
+import androidx.compose.material.icons.twotone.EmojiEmotions
 import androidx.compose.material.icons.twotone.Extension
 import androidx.compose.material.icons.twotone.GraphicEq
 import androidx.compose.material.icons.twotone.Info
@@ -73,6 +74,7 @@ fun SettingsMainContent(
     onNavigateToTheme: () -> Unit,
     onNavigateToKeyEffect: () -> Unit,
     onNavigateToLayoutDisplay: () -> Unit,
+    onNavigateToFavoriteStickers: () -> Unit = {},
     onNavigateToDictionary: () -> Unit,
     onNavigateToPlugins: () -> Unit,
     onNavigateToModelLocal: () -> Unit = {},
@@ -234,6 +236,18 @@ fun SettingsMainContent(
                         title = "布局与显示",
                         subtitle = "候选词显示、键盘布局等",
                         onClick = onNavigateToLayoutDisplay,
+                        showArrow = true
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 56.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    SettingsItem(
+                        icon = Icons.TwoTone.EmojiEmotions,
+                        title = "收藏表情",
+                        subtitle = "添加、删除、拖动排序",
+                        onClick = onNavigateToFavoriteStickers,
                         showArrow = true
                     )
                 })

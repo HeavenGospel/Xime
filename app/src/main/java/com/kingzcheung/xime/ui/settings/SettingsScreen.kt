@@ -38,6 +38,7 @@ fun SettingsScreen(
                 onNavigateToTheme = { navController.navigate(SettingsRoutes.Theme) },
                 onNavigateToKeyEffect = { navController.navigate(SettingsRoutes.KeyEffect) },
                 onNavigateToLayoutDisplay = { navController.navigate(SettingsRoutes.LayoutDisplay) },
+                onNavigateToFavoriteStickers = { navController.navigate(SettingsRoutes.FavoriteStickers) },
                 onNavigateToDictionary = { navController.navigate(SettingsRoutes.Dictionary) },
                 onNavigateToPlugins = { navController.navigate(SettingsRoutes.Plugins) },
                 onNavigateToModelLocal = { navController.navigate(SettingsRoutes.ModelLocal) },
@@ -157,6 +158,12 @@ fun SettingsScreen(
         }
         composable(SettingsRoutes.LayoutDisplay) {
             LayoutDisplaySettingsContent(
+                onBack = { navController.popBackStack() },
+                onNavigateToFavoriteStickers = { navController.navigate(SettingsRoutes.FavoriteStickers) }
+            )
+        }
+        composable(SettingsRoutes.FavoriteStickers) {
+            FavoriteStickersSettingsContent(
                 onBack = { navController.popBackStack() }
             )
         }

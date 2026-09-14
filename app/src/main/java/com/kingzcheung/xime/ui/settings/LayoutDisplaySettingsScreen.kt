@@ -1,7 +1,9 @@
 package com.kingzcheung.xime.ui.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,8 +13,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.twotone.EmojiEmotions
 import androidx.compose.material.icons.twotone.Straighten
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -32,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -40,7 +45,8 @@ import com.kingzcheung.xime.settings.SettingsPreferences
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LayoutDisplaySettingsContent(
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNavigateToFavoriteStickers: () -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -448,6 +454,143 @@ fun LayoutDisplaySettingsContent(
                             },
                             valueRange = 30f..100f,
                             steps = 69
+                        )
+                    }
+                })
+            }
+
+            item {
+                SettingsSection(title = "工具栏", content = {
+                    var toolbarAlignment by remember {
+                        mutableStateOf(SettingsPreferences.getToolbarAlignment(context))
+                    }
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "按钮对齐",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "候选栏空闲时工具栏按钮的水平位置",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf(
+                                SettingsPreferences.TOOLBAR_ALIGN_START to "靠左",
+                                SettingsPreferences.TOOLBAR_ALIGN_CENTER to "居中",
+                                SettingsPreferences.TOOLBAR_ALIGN_END to "靠右",
+                            ).forEach { (value, label) ->
+                                val selected = toolbarAlignment == value
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(
+                                            if (selected) MaterialTheme.colorScheme.primaryContainer
+                                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                        )
+                                        .clickable {
+                                            toolbarAlignment = value
+                                            SettingsPreferences.setToolbarAlignment(context, value)
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                                    )
+                                }
+                            }
+                        }
+                    }
+                })
+            }
+
+            item {
+                SettingsSection(title = "表情包", content = {
+                    SettingsItem(
+                        icon = Icons.TwoTone.EmojiEmotions,
+                        title = "管理收藏表情",
+                        subtitle = "添加、删除、拖动排序",
+                        onClick = onNavigateToFavoriteStickers,
+                        showArrow = true
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    var imageShareFallback by remember {
+                        mutableStateOf(SettingsPreferences.isImageEmojiShareFallbackEnabled(context))
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "发图失败时分享到当前应用",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "无法直接插入时，优先打开当前应用分享；对方无入口才弹出系统分享面板。默认开启，可关闭",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = imageShareFallback,
+                            onCheckedChange = { newValue ->
+                                imageShareFallback = newValue
+                                SettingsPreferences.setImageEmojiShareFallbackEnabled(context, newValue)
+                            }
+                        )
+                    }
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    var imageClipboardFallback by remember {
+                        mutableStateOf(SettingsPreferences.isImageEmojiClipboardFallbackEnabled(context))
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "发图失败时复制到剪贴板",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "分享未成功或不想用分享时，再复制到剪贴板；部分 IM 可能无法粘贴图片",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = imageClipboardFallback,
+                            onCheckedChange = { newValue ->
+                                imageClipboardFallback = newValue
+                                SettingsPreferences.setImageEmojiClipboardFallbackEnabled(context, newValue)
+                            }
                         )
                     }
                 })

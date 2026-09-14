@@ -363,6 +363,14 @@ class ClipboardManager private constructor(private val context: Context) {
                 return false
             }
 
+            val mime = when (imageFile.extension.lowercase()) {
+                "png" -> "image/png"
+                "gif" -> "image/gif"
+                "webp" -> "image/webp"
+                "jpg", "jpeg" -> "image/jpeg"
+                else -> "image/png"
+            }
+
             val cacheDir = File(context.cacheDir, "emoji_cache")
             if (!cacheDir.exists()) {
                 cacheDir.mkdirs()
@@ -375,9 +383,12 @@ class ClipboardManager private constructor(private val context: Context) {
                 }
             }
 
-            val uri = getContentUriForImage(cacheFile) ?: return false
+            val uri = getContentUriForImage(cacheFile, mime) ?: return false
 
-            val clip = ClipData.newUri(context.contentResolver, label, uri)
+            val clip = ClipData(
+                android.content.ClipDescription(label, arrayOf(mime)),
+                ClipData.Item(uri)
+            )
             androidClipboardManager.setPrimaryClip(clip)
 
             true
@@ -393,9 +404,9 @@ class ClipboardManager private constructor(private val context: Context) {
      * 优先使用 FileProvider；Android 12+ 部分厂商 ROM 上
      * FileProvider.getUriForFile 内部 resolveContentProvider 以 USER_ALL(-10000)
      * 校验跨用户权限时抛 "Invalid userId -10000"，此时降级为 MediaStore
-     * 插入图片获取系统 content URI（API 29+ 免权限）。
+     * 插入图片获取系统 content URI（API 29+ 无需权限）。
      */
-    private fun getContentUriForImage(imageFile: File): Uri? {
+    private fun getContentUriForImage(imageFile: File, mimeType: String): Uri? {
         try {
             return FileProvider.getUriForFile(
                 context,
@@ -405,11 +416,11 @@ class ClipboardManager private constructor(private val context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "FileProvider getUriForFile failed, falling back to MediaStore", e)
         }
-        return insertImageToMediaStore(imageFile)
+        return insertImageToMediaStore(imageFile, mimeType)
     }
 
-    /** 把图片插入 MediaStore（Pictures/Xime），返回系统 content URI。 */
-    private fun insertImageToMediaStore(imageFile: File): Uri? {
+    /** 把图片插入 MediaStore（Downloads/Xime），返回系统 content URI。 */
+    private fun insertImageToMediaStore(imageFile: File, mimeType: String): Uri? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             Log.e(TAG, "MediaStore fallback requires API 29+, clipboard image copy failed")
             return null
@@ -417,18 +428,19 @@ class ClipboardManager private constructor(private val context: Context) {
         return try {
             val resolver = context.contentResolver
             val values = ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, imageFile.name)
-                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Xime")
-                put(MediaStore.Images.Media.IS_PENDING, 1)
+                put(MediaStore.MediaColumns.DISPLAY_NAME, imageFile.name)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Xime")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
-            val collection = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            // Files 通道保留原始 MIME，避免 Images 集合把 GIF 当静图
+            val collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
             val uri = resolver.insert(collection, values) ?: return null
             try {
                 resolver.openOutputStream(uri)?.use { output ->
                     FileInputStream(imageFile).use { input -> input.copyTo(output) }
                 } ?: return null
-                val update = ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }
+                val update = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
                 resolver.update(uri, update, null, null)
                 uri
             } catch (e: Exception) {

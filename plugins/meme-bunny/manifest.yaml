@@ -7,13 +7,13 @@ id: com.kingzcheung.xime.plugin.meme_bunny
 
 # 插件名称与描述
 name: 恶搞兔表情包
-description: 恶搞兔表情包（6 个表情图片），这只是一个示例插件，展示了如何在 Xime 中使用 Lua 插件开发表情包功能。
+description: 恶搞兔表情包（6 个表情图片示例插件）。
 
 # 插件中心列表图标（字符图标）
 icon: "🐰"
 
 # 插件版本（字符串）
-version: 3.0.0
+version: 3.0.1
 
 # 插件分类：emoji 表情（多选启用，即时生效）
 type: emoji

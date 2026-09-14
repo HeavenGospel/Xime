@@ -39,6 +39,14 @@
                 <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
+
+        <!-- 收藏表情：相册选图 + 裁剪编辑 -->
+        <activity
+            android:name=".ui.emoji.FavoriteStickerImportActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Xime.Editor" />
         
         <!-- 输入法服务 -->
         <service

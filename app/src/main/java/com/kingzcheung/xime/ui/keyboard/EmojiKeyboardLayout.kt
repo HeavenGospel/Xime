@@ -2,6 +2,10 @@ package com.kingzcheung.xime.ui.keyboard
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -25,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -39,24 +45,31 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.kingzcheung.xime.clipboard.ClipboardManager
 import com.kingzcheung.xime.data.EmojiCategory
 import com.kingzcheung.xime.data.EmojiData
+import com.kingzcheung.xime.data.EmojiPanelMemory
+import com.kingzcheung.xime.data.FavoriteStickersStore
 import com.kingzcheung.xime.data.RecentUsageStore
 import com.kingzcheung.xime.plugin.ExtensionManager
 import com.kingzcheung.xime.plugin.core.api.PluginResultItem
 import com.kingzcheung.xime.plugin.core.api.PluginIcon
-
+import com.kingzcheung.xime.settings.SettingsPreferences
+import com.kingzcheung.xime.ui.emoji.FavoriteStickerImportActivity
+import android.view.HapticFeedbackConstants
 @Composable
 fun EmojiKeyboardLayout(
     onEmojiSelect: (String) -> Unit,
@@ -71,7 +84,6 @@ fun EmojiKeyboardLayout(
     onHapticFeedback: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
-    val clipboardManager = remember { ClipboardManager.getInstance(context) }
 
     // 图标按钮容器色：surface 与 primary 的混合色调（带种子色但不过于强烈）
     val iconButtonContainer = androidx.compose.ui.graphics.lerp(
@@ -80,69 +92,149 @@ fun EmojiKeyboardLayout(
         0.15f
     )
 
-    var selectedTopTabIndex by remember { mutableStateOf(0) }
-    var selectedSubCategoryIndex by remember { mutableStateOf(0) }
+    var selectedTopTabIndex by remember { mutableIntStateOf(0) }
+    var selectedSubCategoryIndex by remember { mutableIntStateOf(0) }
+    var tabMemoryReady by remember { mutableStateOf(false) }
 
     val allCategories by ExtensionManager.emojiCategoriesFlow.collectAsStateWithLifecycle()
     val pluginCategories = allCategories.filter { it.isPlugin }
     val builtinCategories = allCategories.filter { !it.isPlugin }
 
-    // 最近使用（LRU）：作为内置分区的第一个子分类页，点击 emoji 时置顶记录
+    // 打开面板时再拉一次，覆盖「安装/启用后键盘已在前台」未刷新的情况
+    LaunchedEffect(Unit) {
+        ExtensionManager.loadEmojiDataFromPlugins(context)
+        FavoriteStickersStore.ensureLoaded(context)
+    }
+
+    // 最近使用（LRU）：内置 emoji 分区的第一个子分类
     var recentEmojis by remember {
         mutableStateOf(RecentUsageStore.get(context, RecentUsageStore.KEY_RECENT_EMOJIS))
     }
     val recentCategory = EmojiCategory(name = "最近使用", icon = "🕘", emojis = recentEmojis)
+
+    // 收藏表情：顶栏独立 Tab（与 Emoji / 插件表情包同级）
+    val favoriteStickers by FavoriteStickersStore.stickersFlow.collectAsStateWithLifecycle()
+    val favoritesCategory = remember(favoriteStickers) {
+        EmojiCategory(
+            name = FavoriteStickersStore.CATEGORY_NAME,
+            icon = FavoriteStickersStore.CATEGORY_ICON,
+            emojis = emptyList(),
+            emojiItems = favoriteStickers.map { s ->
+                PluginResultItem(
+                    id = s.id,
+                    text = "表情",
+                    imageUrl = FavoriteStickersStore.absolutePath(context, s),
+                )
+            },
+            layoutColumns = 4,
+            layoutItemHeightDp = 72,
+        )
+    }
+
     val displayBuiltinCategories = remember(builtinCategories, recentEmojis) {
         listOf(recentCategory) + builtinCategories
     }
+
+    var favoriteMenuId by remember { mutableStateOf<String?>(null) }
+
+    // 顶栏：0=Emoji，1=收藏，2+=插件表情包
+    val topTabFavorites = 1
+    val topTabPluginBase = 2
 
     // 按 pluginId 分组插件子分类（用于顶层 tab 和底部子分类 tab）
     val pluginGroupEntries = remember(pluginCategories) {
         pluginCategories.groupBy { it.pluginId ?: it.name }.entries.toList()
     }
 
-    // 当前顶层 tab 对应的子分类列表
-    val currentSubCategories = if (selectedTopTabIndex == 0) {
-        displayBuiltinCategories
-    } else {
-        val groupIdx = selectedTopTabIndex - 1
-        if (groupIdx < pluginGroupEntries.size) pluginGroupEntries[groupIdx].value
-        else emptyList()
+    // 恢复上次顶栏 / 子分类
+    LaunchedEffect(pluginGroupEntries, displayBuiltinCategories.size) {
+        if (tabMemoryReady) return@LaunchedEffect
+        val tabKey = EmojiPanelMemory.loadTabKey(context)
+        val sub = EmojiPanelMemory.loadSubIndex(context)
+        when {
+            tabKey == EmojiPanelMemory.TAB_FAVORITES -> {
+                selectedTopTabIndex = topTabFavorites
+                selectedSubCategoryIndex = 0
+            }
+            tabKey.startsWith("plugin:") -> {
+                val id = tabKey.removePrefix("plugin:")
+                val idx = pluginGroupEntries.indexOfFirst { it.key == id }
+                if (idx >= 0) {
+                    selectedTopTabIndex = topTabPluginBase + idx
+                    val last = pluginGroupEntries[idx].value.lastIndex.coerceAtLeast(0)
+                    selectedSubCategoryIndex = sub.coerceIn(0, last)
+                } else {
+                    selectedTopTabIndex = 0
+                    selectedSubCategoryIndex = 0
+                }
+            }
+            else -> {
+                selectedTopTabIndex = 0
+                val last = displayBuiltinCategories.lastIndex.coerceAtLeast(0)
+                selectedSubCategoryIndex = sub.coerceIn(0, last)
+            }
+        }
+        tabMemoryReady = true
     }
 
-    // 所有页面的扁平索引（用于动画过渡）
-    val currentPageIndex = if (selectedTopTabIndex == 0) {
-        selectedSubCategoryIndex.coerceIn(0, maxOf(0, displayBuiltinCategories.lastIndex))
-    } else {
-        val groupIdx = selectedTopTabIndex - 1
-        val startPage = displayBuiltinCategories.size + pluginGroupEntries.take(groupIdx).sumOf { it.value.size }
-        val groupSize = if (groupIdx < pluginGroupEntries.size) pluginGroupEntries[groupIdx].value.lastIndex else 0
-        startPage + selectedSubCategoryIndex.coerceIn(0, maxOf(0, groupSize))
+    // 记住当前选择
+    LaunchedEffect(selectedTopTabIndex, selectedSubCategoryIndex, pluginGroupEntries, tabMemoryReady) {
+        if (!tabMemoryReady) return@LaunchedEffect
+        val tabKey = when (selectedTopTabIndex) {
+            0 -> EmojiPanelMemory.TAB_BUILTIN
+            topTabFavorites -> EmojiPanelMemory.TAB_FAVORITES
+            else -> {
+                val g = selectedTopTabIndex - topTabPluginBase
+                if (g in pluginGroupEntries.indices) {
+                    EmojiPanelMemory.pluginTabKey(pluginGroupEntries[g].key)
+                } else {
+                    EmojiPanelMemory.TAB_BUILTIN
+                }
+            }
+        }
+        EmojiPanelMemory.save(context, tabKey, selectedSubCategoryIndex)
     }
-    val totalPages = displayBuiltinCategories.size + pluginCategories.size
+
+    val favoritesPageIndex = displayBuiltinCategories.size
+    val totalPages = displayBuiltinCategories.size + 1 + pluginCategories.size
+
+    // 当前顶层 tab 对应的子分类列表（收藏无子分类）
+    val currentSubCategories = when (selectedTopTabIndex) {
+        0 -> displayBuiltinCategories
+        topTabFavorites -> emptyList()
+        else -> {
+            val groupIdx = selectedTopTabIndex - topTabPluginBase
+            if (groupIdx in pluginGroupEntries.indices) pluginGroupEntries[groupIdx].value
+            else emptyList()
+        }
+    }
+
+    val currentPageIndex = when (selectedTopTabIndex) {
+        0 -> selectedSubCategoryIndex.coerceIn(0, maxOf(0, displayBuiltinCategories.lastIndex))
+        topTabFavorites -> favoritesPageIndex
+        else -> {
+            val groupIdx = selectedTopTabIndex - topTabPluginBase
+            val startPage = favoritesPageIndex + 1 +
+                pluginGroupEntries.take(groupIdx.coerceAtLeast(0)).sumOf { it.value.size }
+            val groupSize =
+                if (groupIdx in pluginGroupEntries.indices) pluginGroupEntries[groupIdx].value.lastIndex
+                else 0
+            startPage + selectedSubCategoryIndex.coerceIn(0, maxOf(0, groupSize))
+        }
+    }
 
     val configuration = LocalConfiguration.current
     val isLandscape =
         configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     val emojiColumns = if (isLandscape) 15 else 8
 
-    // 当前显示的类别
-    val currentCategory =
-        if (selectedTopTabIndex == 0) {
-            if (displayBuiltinCategories.isNotEmpty()) displayBuiltinCategories[selectedSubCategoryIndex.coerceIn(0, displayBuiltinCategories.lastIndex)]
-            else EmojiData.categories.first()
-        } else {
-            val groupIdx = selectedTopTabIndex - 1
-            if (pluginGroupEntries.isNotEmpty() && groupIdx < pluginGroupEntries.size) {
-                val subCats = pluginGroupEntries[groupIdx].value
-                subCats[selectedSubCategoryIndex.coerceIn(0, subCats.lastIndex)]
-            } else EmojiData.categories.first()
-        }
-
-    Column(
+    Box(
         modifier = modifier
-            .fillMaxWidth()
+            .fillMaxSize()
             .background(backgroundColor)
+    ) {
+    Column(
+        modifier = Modifier.fillMaxSize()
     ) {
         // 导航区：返回按钮 + 顶层 Tab（Emoji / 插件）
         Box(
@@ -210,21 +302,45 @@ fun EmojiKeyboardLayout(
                             )
                         }
 
+                        // 收藏 Tab（与 Emoji、插件表情包同级）
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(11.dp))
+                                .background(
+                                    if (selectedTopTabIndex == topTabFavorites) accentColor.copy(0.4f)
+                                    else Color.Transparent
+                                )
+                                .tolerantClick {
+                                    onHapticFeedback?.invoke()
+                                    selectedTopTabIndex = topTabFavorites
+                                    selectedSubCategoryIndex = 0
+                                }
+                                .padding(horizontal = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = FavoriteStickersStore.CATEGORY_ICON,
+                                fontSize = 14.sp
+                            )
+                        }
+
                         // 插件 Tab（按 pluginId 分组，每插件一个顶层 tab）
                         pluginGroupEntries.forEachIndexed { index, (_, subCats) ->
                             val firstCat = subCats.first()
                             val pluginIcon = firstCat.pluginIcon
+                            val tabIndex = topTabPluginBase + index
                             Box(
                                 modifier = Modifier
                                     .fillMaxHeight()
                                     .clip(RoundedCornerShape(11.dp))
                                     .background(
-                                        if (selectedTopTabIndex == index + 1) accentColor.copy(0.4f)
+                                        if (selectedTopTabIndex == tabIndex) accentColor.copy(0.4f)
                                         else Color.Transparent
                                     )
                                     .tolerantClick {
                                         onHapticFeedback?.invoke()
-                                        selectedTopTabIndex = index + 1
+                                        selectedTopTabIndex = tabIndex
                                         selectedSubCategoryIndex = 0
                                     }
                                     .padding(horizontal = 10.dp),
@@ -269,19 +385,25 @@ fun EmojiKeyboardLayout(
         LaunchedEffect(pagerState.currentPage, pagerState.isScrollInProgress) {
             val page = pagerState.currentPage
             if (!pagerState.isScrollInProgress && page != currentPageIndex) {
-                if (page < displayBuiltinCategories.size) {
-                    selectedTopTabIndex = 0
-                    selectedSubCategoryIndex = page
-                } else {
-                    // 找到该 page 属于哪个插件组的哪个子分类
-                    var remaining = page - builtinCategories.size
-                    for ((groupIdx, entry) in pluginGroupEntries.withIndex()) {
-                        if (remaining < entry.value.size) {
-                            selectedTopTabIndex = groupIdx + 1
-                            selectedSubCategoryIndex = remaining
-                            break
+                when {
+                    page < displayBuiltinCategories.size -> {
+                        selectedTopTabIndex = 0
+                        selectedSubCategoryIndex = page
+                    }
+                    page == favoritesPageIndex -> {
+                        selectedTopTabIndex = topTabFavorites
+                        selectedSubCategoryIndex = 0
+                    }
+                    else -> {
+                        var remaining = page - favoritesPageIndex - 1
+                        for ((groupIdx, entry) in pluginGroupEntries.withIndex()) {
+                            if (remaining < entry.value.size) {
+                                selectedTopTabIndex = topTabPluginBase + groupIdx
+                                selectedSubCategoryIndex = remaining
+                                break
+                            }
+                            remaining -= entry.value.size
                         }
-                        remaining -= entry.value.size
                     }
                 }
             }
@@ -295,14 +417,30 @@ fun EmojiKeyboardLayout(
                 .padding(horizontal = if (isLandscape) 50.dp else 4.dp)
                 .padding(bottom = 4.dp)
         ) { pageIndex ->
-            val category = if (pageIndex < displayBuiltinCategories.size) {
-                displayBuiltinCategories[pageIndex]
-            } else {
-                pluginCategories[pageIndex - displayBuiltinCategories.size]
+            val category = when {
+                pageIndex < displayBuiltinCategories.size -> displayBuiltinCategories[pageIndex]
+                pageIndex == favoritesPageIndex -> favoritesCategory
+                else -> pluginCategories[pageIndex - favoritesPageIndex - 1]
             }
 
             val emojiColumns = if (isLandscape) 15 else 8
-            if (category.isPlugin && category.emojiItems != null) {
+            if (category.name == FavoriteStickersStore.CATEGORY_NAME) {
+                FavoritesStickerGrid(
+                    stickers = favoriteStickers,
+                    backgroundColor = backgroundColor,
+                    textColor = textColor,
+                    accentColor = accentColor,
+                    onAdd = { FavoriteStickerImportActivity.start(context) },
+                    onSend = { path ->
+                        if (onImageEmojiSelect != null) {
+                            onImageEmojiSelect(path)
+                        } else {
+                            Toast.makeText(context, "当前无法发送图片表情", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onLongPress = { id -> favoriteMenuId = id },
+                )
+            } else if (category.emojiItems != null) {
                 val hasImages = category.emojiItems.any { it.imageUrl != null }
                 val defaultCols = if (hasImages) 6 else emojiColumns
                 val columns = if (category.layoutColumns > 0) category.layoutColumns else defaultCols
@@ -340,21 +478,20 @@ fun EmojiKeyboardLayout(
                                         if (imageUrl != null && onImageEmojiSelect != null) {
                                             onImageEmojiSelect(imageUrl)
                                         } else if (imageUrl != null) {
-                                            val success =
-                                                clipboardManager.copyImageToSystemClipboard(
-                                                    imageUrl,
-                                                    item.text
-                                                )
-                                            if (success) {
+                                            val copyFallback =
+                                                SettingsPreferences.isImageEmojiClipboardFallbackEnabled(context)
+                                            if (copyFallback) {
+                                                val ok = ClipboardManager.getInstance(context)
+                                                    .copyImageToSystemClipboard(imageUrl, item.text)
                                                 Toast.makeText(
                                                     context,
-                                                    "已复制表情，可粘贴发送",
+                                                    if (ok) "已复制表情，可粘贴发送" else "复制失败",
                                                     Toast.LENGTH_SHORT
                                                 ).show()
                                             } else {
                                                 Toast.makeText(
                                                     context,
-                                                    "复制失败",
+                                                    "当前无法发送图片表情",
                                                     Toast.LENGTH_SHORT
                                                 ).show()
                                             }
@@ -482,6 +619,199 @@ fun EmojiKeyboardLayout(
 
         // 底部留空
         Spacer(modifier = Modifier.height(if (isLandscape) 15.dp else bottomPaddingDp.dp))
+    }
+
+    // IME 窗口内不要用 AlertDialog（独立 Window 常被挡/看不见），用面板内浮层
+    val menuId = favoriteMenuId
+    if (menuId != null) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(8f)
+                .background(Color.Black.copy(alpha = 0.45f))
+                .clickable { favoriteMenuId = null },
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(horizontal = 32.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .clickable(enabled = false) { /* 阻止点击穿透到遮罩关闭 */ }
+                    .padding(vertical = 8.dp)
+            ) {
+                Text(
+                    text = "移到前面",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 16.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            FavoriteStickersStore.moveToFront(context, menuId)
+                            favoriteMenuId = null
+                        }
+                        .padding(horizontal = 20.dp, vertical = 14.dp)
+                )
+                Text(
+                    text = "删除",
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 16.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            FavoriteStickersStore.delete(context, menuId)
+                            favoriteMenuId = null
+                        }
+                        .padding(horizontal = 20.dp, vertical = 14.dp)
+                )
+                Text(
+                    text = "取消",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    fontSize = 16.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { favoriteMenuId = null }
+                        .padding(horizontal = 20.dp, vertical = 14.dp)
+                )
+            }
+        }
+    }
+    } // Box
+}
+
+@Composable
+private fun FavoritesStickerGrid(
+    stickers: List<FavoriteStickersStore.Sticker>,
+    backgroundColor: Color,
+    textColor: Color,
+    accentColor: Color,
+    onAdd: () -> Unit,
+    onSend: (String) -> Unit,
+    onLongPress: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    val isLandscape =
+        LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val columns = if (isLandscape) 6 else 4
+    val itemHeightDp = 72
+
+    // 首位「+」+ 收藏列表
+    val cells: List<Any?> = listOf(null) + stickers
+    val rows = cells.chunked(columns)
+
+    if (stickers.isEmpty()) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            FavoriteAddButton(
+                accentColor = accentColor,
+                textColor = textColor,
+                onClick = onAdd,
+                modifier = Modifier.size(itemHeightDp.dp)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "添加自定义表情",
+                color = textColor.copy(alpha = 0.5f),
+                fontSize = 14.sp
+            )
+            Text(
+                text = "支持从相册选择 PNG / JPG / GIF / WebP 等",
+                color = textColor.copy(alpha = 0.35f),
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+        return
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        items(rows.size) { rowIndex ->
+            val row = rows[rowIndex]
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                row.forEach { cell ->
+                    if (cell == null) {
+                        FavoriteAddButton(
+                            accentColor = accentColor,
+                            textColor = textColor,
+                            onClick = onAdd,
+                            modifier = Modifier
+                                .weight(1f)
+                                .aspectRatio(1f)
+                        )
+                    } else {
+                        val sticker = cell as FavoriteStickersStore.Sticker
+                        val path = FavoriteStickersStore.absolutePath(context, sticker)
+                        val view = LocalView.current
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if ((backgroundColor.red + backgroundColor.green + backgroundColor.blue) / 3f > 0.5f)
+                                        Color.White.copy(alpha = 0.8f)
+                                    else Color.LightGray.copy(alpha = 0.15f)
+                                )
+                                .combinedClickable(
+                                    onClick = { onSend(path) },
+                                    onLongClick = {
+                                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                        onLongPress(sticker.id)
+                                    }
+                                )
+                                .padding(4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(context)
+                                    .data(path)
+                                    .crossfade(false)
+                                    .build(),
+                                contentDescription = "收藏表情",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                    }
+                }
+                repeat(columns - row.size) {
+                    Spacer(modifier = Modifier.weight(1f).aspectRatio(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FavoriteAddButton(
+    accentColor: Color,
+    textColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .border(1.dp, textColor.copy(alpha = 0.25f), RoundedCornerShape(8.dp))
+            .tolerantClick(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.Add,
+            contentDescription = "添加表情",
+            tint = accentColor,
+            modifier = Modifier.size(28.dp)
+        )
     }
 }
 
