@@ -141,6 +141,19 @@ public:
         return result;
     }
 
+    Bool syncUserData() {
+        if (!rime) {
+            LOGE("syncUserData: rime not available");
+            return false;
+        }
+        LOGI("Syncing user data...");
+        Bool result = rime->sync_user_data();
+        if (!result) {
+            LOGE("syncUserData FAILED");
+        }
+        return result;
+    }
+
     bool createSession() {
         if (!rime) return false;
         session_id_ = rime->create_session();
@@ -1881,6 +1894,15 @@ Java_com_kingzcheung_xime_rime_RimeEngine_nativeStartMaintenance(
     jboolean full
 ) {
     Bool result = Rime::Instance().startMaintenance(full == JNI_TRUE);
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_kingzcheung_xime_rime_RimeEngine_nativeSyncUserData(
+    JNIEnv* env,
+    jobject thiz
+) {
+    Bool result = Rime::Instance().syncUserData();
     return result ? JNI_TRUE : JNI_FALSE;
 }
 

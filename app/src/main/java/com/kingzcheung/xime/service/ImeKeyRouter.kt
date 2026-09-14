@@ -99,9 +99,12 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                     return
                 }
                 "space" -> {
-                    if (hasComposing && candState.candidates.isNotEmpty()) {
-                        // 组合态：空格选第一个候选（keyJobs 保序）
-                        postRimeJob { selectCandidateAsync(0) }
+                    if (hasComposing && !service.uiState.value.isAsciiMode) {
+                        // 组合态：setInput 追加 '，避免 processKey 被引号 punctuator 清码
+                        postRimeJob {
+                            val result = service.rimeEngine.appendSyllableDelimiter()
+                            if (result.processed) sendTransformedResult(result)
+                        }
                     } else {
                         ToolPanelEditTextHolder.editText?.let { et ->
                             val start = et.selectionStart.coerceAtLeast(0)
@@ -369,8 +372,17 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                                 associationCandidates = emptyList()
                             )
                         }
-                    } else if (candState.isComposing) {
-                        if (candState.candidates.isNotEmpty()) {
+                    } else if (candState.isComposing || candState.inputText.isNotEmpty()) {
+                        if (!state.isAsciiMode && !isT9Schema(state.currentSchemaId)) {
+                            // 全拼组合态：空格 = 音节分隔符 '（如 xi'an），点选候选或数字键上屏
+                            // 必须 setInput，勿 processKey(')：会被 punctuator 配成 ‘’ 并清码
+                            val result = service.rimeEngine.appendSyllableDelimiter()
+                            if (result.processed) {
+                                sendTransformedResult(result)
+                            } else {
+                                needsUIUpdate = true
+                            }
+                        } else if (candState.candidates.isNotEmpty()) {
                             selectCandidateAsync(0)
                         } else {
                             val input = candState.inputText
@@ -427,7 +439,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                 }
                 "word_separator" -> {
                     if (candState.isComposing || candState.inputText.isNotEmpty()) {
-                        val result = service.rimeEngine.processKeyAndGetResult(0x27, 0)
+                        val result = service.rimeEngine.appendSyllableDelimiter()
                         if (result.processed) {
                             sendTransformedResult(result)
                         } else {
@@ -557,9 +569,28 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                         // 非 ASCII 可打印字符（全角符号/中文标点）：直接上屏，不进入 Rime 引擎。
                         // Rime processKey 只接受标准键码，全角键码（如 U+FF0F）无法识别会被静默
                         // 丢弃，导致中文模式下符号面板点击全角字符无输出（与 Trime onText 行为一致）。
+                        // 例外：成对引号仍映射为 ASCII 交给 punctuator，才能左右交替。
                         if (char.isNotEmpty() && char.any { it.code > 0x7E }) {
-                            committedText = char
-                            needsUIUpdate = true
+                            val pairKey = when (char) {
+                                "“", "”" -> '"'.code
+                                "‘", "’" -> '\''.code
+                                else -> null
+                            }
+                            if (pairKey != null) {
+                                val result = service.rimeEngine.processKeyAndGetResult(pairKey, 0)
+                                if (result.processed) {
+                                    if (result.committedText.isNotEmpty()) {
+                                        withContext(Dispatchers.Main) { service.commitText(result.committedText) }
+                                    }
+                                    sendTransformedResult(result) { if (service.calculatorEngine.isActive()) updateCalculatorCandidates() }
+                                } else {
+                                    committedText = char
+                                    needsUIUpdate = true
+                                }
+                            } else {
+                                committedText = char
+                                needsUIUpdate = true
+                            }
                         } else if (isShifted && !isLetter) {
                             if (char.length == 1) {
                                 val charCode = char[0].code

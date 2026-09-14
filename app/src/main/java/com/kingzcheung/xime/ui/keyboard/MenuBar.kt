@@ -53,6 +53,8 @@ data class MenuItem(
     val label: String,
     val action: () -> Unit,
     val textIcon: String? = null,
+    /** 方案开关等：当前为非默认态时高亮，便于辨认状态。 */
+    val highlighted: Boolean = false,
 )
 
 data class MenuBarState(
@@ -125,15 +127,26 @@ fun MenuBar(
     val floatingLabel = if (state.isFloatingMode) "退出悬浮" else "悬浮模式"
     val floatingAction = callbacks.onFloatingModeToggle ?: {}
 
-    // 动态方案开关：图标取第一个状态的首字；标题若有 abbrev 则用 abbrev（多个用 🔁 连接），否则用所有状态 🔁 连接
+    // 动态方案开关：展示当前状态文案；非默认态高亮，切换后菜单不关闭以便立刻看到变化
     val switchItems = state.schemaSwitches.map { sw ->
-        val textIcon = sw.states.firstOrNull()?.firstOrNull()?.toString() ?: ""
-        val label = if (sw.abbrev.isNotEmpty()) sw.abbrev.joinToString("🔁")
-            else sw.states.joinToString("🔁")
-        MenuItem(icon = null, label = label, action = { callbacks.onToggleSchemaSwitch?.invoke(sw) }, textIcon = textIcon)
+        val current = sw.states.getOrNull(sw.currentIndex)
+            ?: sw.states.firstOrNull().orEmpty()
+        val currentAbbrev = sw.abbrev.getOrNull(sw.currentIndex)?.takeIf { it.isNotEmpty() }
+        val textIcon = when {
+            current.isEmpty() -> ""
+            current.length <= 2 -> current
+            else -> current.first().toString()
+        }
+        MenuItem(
+            icon = null,
+            label = currentAbbrev ?: current,
+            action = { callbacks.onToggleSchemaSwitch?.invoke(sw) },
+            textIcon = textIcon,
+            highlighted = sw.currentIndex != 0,
+        )
     }
 
-    val menuItems = remember(darkModeIcon, darkModeLabel, state.isFloatingMode, state.schemaSwitches) {
+    val menuItems = remember(darkModeIcon, darkModeLabel, state.isFloatingMode, floatingLabel, state.schemaSwitches) {
         listOf(
             MenuItem(clipboardIcon, "剪贴板", callbacks.onClipboard),
             MenuItem(quickSendIcon, "快捷发送", callbacks.onQuickSend),
@@ -289,11 +302,22 @@ fun MenuItemButton(
     modifier: Modifier = Modifier,
     isLandscape: Boolean = false
 ) {
+    val primary = MaterialTheme.colorScheme.primary
+    val resolvedBg = if (item.highlighted) {
+        androidx.compose.ui.graphics.lerp(bgColor, primary, 0.28f)
+    } else {
+        bgColor
+    }
+    val resolvedFg = if (item.highlighted) {
+        androidx.compose.ui.graphics.lerp(textColor, primary, 0.55f)
+    } else {
+        textColor
+    }
     Column(
         modifier = modifier
             .then(if (isLandscape) Modifier.height(72.dp) else Modifier.aspectRatio(1f))
             .clip(RoundedCornerShape(12.dp))
-            .background(bgColor)
+            .background(resolvedBg)
             .clickable { item.action() }
             .padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -302,7 +326,7 @@ fun MenuItemButton(
         if (item.textIcon != null) {
             Text(
                 text = item.textIcon,
-                color = textColor.copy(alpha = 0.7f),
+                color = resolvedFg.copy(alpha = if (item.highlighted) 0.95f else 0.7f),
                 fontSize = if (isLandscape) 18.sp else 24.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1
@@ -311,16 +335,16 @@ fun MenuItemButton(
             Icon(
                 painter = item.icon,
                 contentDescription = item.label,
-                tint = textColor.copy(alpha = 0.7f),
+                tint = resolvedFg.copy(alpha = if (item.highlighted) 0.95f else 0.7f),
                 modifier = Modifier.size(if (isLandscape) 18.dp else 24.dp)
             )
         }
         Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = item.label,
-            color = textColor,
+            color = resolvedFg,
             fontSize = if (isLandscape) 9.sp else 10.sp,
-            fontWeight = FontWeight.Medium,
+            fontWeight = if (item.highlighted) FontWeight.Bold else FontWeight.Medium,
             textAlign = TextAlign.Center,
             maxLines = 1
         )

@@ -411,6 +411,25 @@ class RimeEngine {
         }
     }
 
+    /**
+     * 在当前编码末尾追加音节分隔符 `'`。
+     *
+     * 必须走 [setInput]，不能 [processKey](0x27)：apostrophe 会被 punctuator 当成配对引号
+     * （上屏并清码），或被 key_binder 绑成选候选，看起来就像「空格把拼音清空了」。
+     */
+    fun appendSyllableDelimiter(): RimeProcessResult {
+        val empty = RimeProcessResult(false, "", "", "", emptyArray(), false, false, false)
+        if (!isInitialized) return empty
+        return tryLocked(empty) {
+            if (!nativeHasSession() && !nativeCreateSession()) return@tryLocked empty
+            val current = nativeGetInput().orEmpty()
+            if (current.isEmpty()) return@tryLocked empty
+            val next = if (current.endsWith("'")) current else current + "'"
+            if (next != current && !nativeSetInput(next)) return@tryLocked empty
+            nativeGetProcessResult(true)
+        }
+    }
+
     fun toggleAsciiMode(): Boolean {
         // 用户显式切换操作：阻塞等待锁（部署/维护持锁时排队，完成后自动切换），
         // 不静默失败；调用方保证不在主线程执行（ImeKeyRouter 的 key-process 线程）。
@@ -483,7 +502,38 @@ class RimeEngine {
             // 部署时 librime 才会编译对应的 user_<schemaId>.table.bin。
             // 幂等：补丁已就位时 native 侧直接 skip，开销极小。
             ensureT9SchemaPatchesForDeployedSchemas(userDataDir)
+            // 安装方案包时若引擎尚未就绪，userdb 已落在 sync/；部署前再合并一次
+            val syncDir = File(userDataDir, "sync")
+            if (syncDir.isDirectory && syncDir.walkTopDown().any {
+                    it.isFile && it.name.endsWith(".userdb.txt", ignoreCase = true)
+                }
+            ) {
+                if (nativeSyncUserData()) {
+                    var waited = 0L
+                    while (nativeIsMaintaining() && waited < 120_000L) {
+                        Thread.sleep(100)
+                        waited += 100
+                    }
+                }
+            }
             return nativeDeploy()
+        }
+    }
+
+    fun syncUserData(): Boolean {
+        if (!isInitialized) return false
+        return locked {
+            if (!nativeSyncUserData()) return@locked false
+            var waited = 0L
+            while (nativeIsMaintaining() && waited < 120_000L) {
+                Thread.sleep(100)
+                waited += 100
+            }
+            if (nativeIsMaintaining()) {
+                Log.w(TAG, "syncUserData: still maintaining after timeout")
+                return@locked false
+            }
+            true
         }
     }
 
@@ -695,6 +745,7 @@ class RimeEngine {
         }
     }
     private external fun nativeStartMaintenance(full: Boolean): Boolean
+    private external fun nativeSyncUserData(): Boolean
     private external fun nativeDeploy(): Boolean
     private external fun nativeDeploySchema(schemaId: String): Boolean
     private external fun nativeLookupText(text: String): String

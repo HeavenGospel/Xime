@@ -547,21 +547,19 @@ fun KeyboardView(
                         val cursorMoveActive = remember { mutableStateOf(false) }
                         val cursorMod = if (callbacks.onCursorMove != null) {
                             Modifier.pointerInput(cursorMoveStepDp, cursorMoveActivationDp) {
-                                val stepThresholdPx = cursorMoveStepDp.dp.toPx()
+                                val stepThresholdPx = cursorMoveStepDp.dp.toPx().coerceAtLeast(1f)
                                 val activationThresholdPx = cursorMoveActivationDp.dp.toPx()
                                 awaitEachGesture {
                                     suppressCursorMove.value = false
                                     cursorMoveActive.value = false
                                     val down = awaitFirstDown(requireUnconsumed = false)
                                     var isCursorGesture = false
-                                    var lastSteps = 0
-                                    var activationAnchorX = down.position.x
+                                    // 激活后按「帧间位移」累加计步，避免滑回起点时横纵比失效导致停步再暴跳
+                                    var pendingDx = 0f
 
                                     do {
                                         val event = awaitPointerEvent()
                                         val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                        val dx = change.position.x - down.position.x
-                                        val dy = change.position.y - down.position.y
 
                                         if (!change.pressed) {
                                             if (isCursorGesture) {
@@ -570,23 +568,34 @@ fun KeyboardView(
                                             break
                                         }
                                         if (suppressCursorMove.value) break
-                                        if (abs(dx) > abs(dy) * 4f) {
 
-                                            if (!isCursorGesture && abs(dx) > activationThresholdPx) {
+                                        val dx = change.position.x - down.position.x
+                                        val dy = change.position.y - down.position.y
+                                        val moveX = change.position.x - change.previousPosition.x
+
+                                        if (!isCursorGesture) {
+                                            // 仅用按下点位移判断是否进入移光标；进入后不再用此条件卡死
+                                            if (abs(dx) > abs(dy) * 4f && abs(dx) > activationThresholdPx) {
                                                 isCursorGesture = true
                                                 cursorMoveActive.value = true
-                                                activationAnchorX = change.position.x
+                                                pendingDx = 0f
                                             }
+                                        }
 
-                                            if (isCursorGesture) {
-                                                event.changes.forEach { it.consume() }
-                                                val dxFromAnchor = change.position.x - activationAnchorX
-                                                val steps = (dxFromAnchor / stepThresholdPx).toInt()
-                                                if (steps != lastSteps) {
-                                                    val delta = steps - lastSteps
-                                                    currentOnCursorMove.value?.invoke(delta)
-                                                    lastSteps = steps
-                                                }
+                                        if (isCursorGesture) {
+                                            event.changes.forEach { it.consume() }
+                                            pendingDx += moveX
+                                            var stepDelta = 0
+                                            while (pendingDx >= stepThresholdPx) {
+                                                pendingDx -= stepThresholdPx
+                                                stepDelta++
+                                            }
+                                            while (pendingDx <= -stepThresholdPx) {
+                                                pendingDx += stepThresholdPx
+                                                stepDelta--
+                                            }
+                                            if (stepDelta != 0) {
+                                                currentOnCursorMove.value?.invoke(stepDelta)
                                             }
                                         }
                                     } while (true)
@@ -1104,6 +1113,7 @@ fun KeyboardView(
         }
 
         if (page is KeyboardPage.Overlay) {
+            val appContext = LocalContext.current
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1138,7 +1148,8 @@ fun KeyboardView(
                             onToggleDarkMode = { onHapticFeedback?.invoke(); callbacks.onToggleDarkMode?.invoke() },
                             onToolbarCustomize = { onHapticFeedback?.invoke(); viewModel.showOverlay(OverlayRoute.ToolbarCustomize) },
                             onFloatingModeToggle = { onHapticFeedback?.invoke(); callbacks.onFloatingModeChange?.invoke(!state.isFloatingMode); viewModel.closeOverlay() },
-                            onToggleSchemaSwitch = { sw -> onHapticFeedback?.invoke(); callbacks.onToggleSchemaSwitch?.invoke(sw); viewModel.closeOverlay() },
+                            // 不关闭菜单，便于立刻看到当前状态文案/高亮变化
+                            onToggleSchemaSwitch = { sw -> onHapticFeedback?.invoke(); callbacks.onToggleSchemaSwitch?.invoke(sw) },
                         ),
                         modifier = Modifier.fillMaxWidth().fillMaxHeight()
                     )
@@ -1229,7 +1240,10 @@ fun KeyboardView(
                             }
                         },
                         onImageEmojiSelect = callbacks.onCommitImage,
-                        onBack = { viewModel.closeOverlay() },
+                        onBack = {
+                            com.kingzcheung.xime.data.EmojiPanelMemory.clearPendingRestoreEmoji(appContext)
+                            viewModel.closeOverlay()
+                        },
                         backgroundColor = keyboardBgColor,
                         textColor = keyTextColor,
                         accentColor = accentColor,

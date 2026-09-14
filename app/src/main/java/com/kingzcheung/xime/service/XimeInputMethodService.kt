@@ -1544,7 +1544,21 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     highlightIndex.intValue = (highlightIndex.intValue - 1).coerceAtLeast(0)
                     return true
                 }
-                KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_ENTER -> {
+                KeyEvent.KEYCODE_ENTER -> {
+                    if (candidateState.value.candidates.isNotEmpty()) {
+                        keyRouter.selectCandidate(highlightIndex.intValue)
+                        highlightIndex.intValue = 0
+                        return true
+                    }
+                }
+                KeyEvent.KEYCODE_SPACE -> {
+                    // 全拼组合态走分音（handleKeyPress → 插入 '）；回车仍选高亮候选
+                    if (!uiState.value.isAsciiMode && candidateState.value.isComposing
+                        && !isT9Schema(uiState.value.currentSchemaId)
+                    ) {
+                        keyRouter.handleKeyPress("space", false)
+                        return true
+                    }
                     if (candidateState.value.candidates.isNotEmpty()) {
                         keyRouter.selectCandidate(highlightIndex.intValue)
                         highlightIndex.intValue = 0
@@ -1797,6 +1811,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 InputConnection.CURSOR_UPDATE_MONITOR or InputConnection.CURSOR_UPDATE_IMMEDIATE
             )
         }
+        // 收藏选图返回：直接打开表情面板（记忆在收藏 Tab）
+        maybeRestoreEmojiPanelAfterImport()
     }
 
     private var anchorCoords = floatArrayOf(0f, 0f, 0f, 0f)
@@ -2001,16 +2017,46 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         // 每次弹出只做两次资源读取对比，取色未变时零成本。
         KeyboardThemes.refreshDynamicSchemes(this)
         clipboardSyncBridge?.pullOnce()
+        maybeRestoreEmojiPanelAfterImport()
+    }
+
+    /** 从收藏表情选图/裁剪页返回后，恢复到表情收藏面板。 */
+    private fun maybeRestoreEmojiPanelAfterImport() {
+        if (!com.kingzcheung.xime.data.EmojiPanelMemory.shouldRestoreEmojiPanel(this)) return
+        val show = Runnable {
+            keyboardViewModel.showOverlay(
+                com.kingzcheung.xime.keyboard.OverlayRoute.Emoji
+            )
+        }
+        show.run()
+        // 抗竞态：Activity 结束时可能先 show 再 hide 再 show，延迟再补一次
+        mainHandler.post(show)
+        mainHandler.postDelayed({
+            if (com.kingzcheung.xime.data.EmojiPanelMemory.shouldRestoreEmojiPanel(this)) {
+                show.run()
+                // 确认已在表情页后再清窗口，避免被中间一次 hide 清掉意图
+                val page = keyboardViewModel.page.value
+                if (page is com.kingzcheung.xime.keyboard.KeyboardPage.Overlay &&
+                    page.route is com.kingzcheung.xime.keyboard.OverlayRoute.Emoji
+                ) {
+                    com.kingzcheung.xime.data.EmojiPanelMemory.clearPendingRestoreEmoji(this)
+                }
+            }
+        }, 200)
     }
     
     private fun clearInputState() {
         closeToolPanel()
-        // 输入会话结束：关闭残留的面板页面（表情/符号等 overlay），
-        // 避免下次键盘弹出时在候选栏上方渲染上次的面板背景
+        // 选图返回恢复窗口内：允许清 overlay（窗口已隐藏），但保留 pending，下次 show 再进收藏
+        val keepEmojiRestore =
+            com.kingzcheung.xime.data.EmojiPanelMemory.hasPendingRestoreEmoji(this)
         var page = keyboardViewModel.page.value
         while (page is com.kingzcheung.xime.keyboard.KeyboardPage.Overlay) {
             keyboardViewModel.closeOverlay()
             page = keyboardViewModel.page.value
+        }
+        if (keepEmojiRestore) {
+            // pending 已在 prefs，勿在此处清掉
         }
         calculatorEngine.clear()
         rimeEngine.clearComposition()
