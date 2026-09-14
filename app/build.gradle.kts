@@ -75,7 +75,8 @@ android {
                 } else {
                     keystoreProperties.getProperty("keyBase64")?.let { keyBase64 ->
                         val ks = File(layout.buildDirectory.get().asFile, "release-keystore.jks")
-                        ks.writeBytes(Base64.getDecoder().decode(keyBase64.replace("\n", "").trim()))
+                        // CI secrets / wrapped base64 may contain spaces or newlines.
+                        ks.writeBytes(Base64.getDecoder().decode(keyBase64.replace(Regex("\\s+"), "")))
                         ks
                     }
                 }
