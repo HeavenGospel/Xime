@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and release (e.g. v2.8.2)'
+        required: true
+        type: string
+        default: 'v2.8.2'
 
 permissions:
   contents: write
@@ -16,6 +23,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
+          # Tag push: GITHUB_REF is refs/tags/...; manual run: use the chosen tag.
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           submodules: recursive
           fetch-depth: 0
 
@@ -92,7 +101,12 @@ jobs:
 
       - name: Get version from tag
         id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Find APKs and plugin XIPKs
         id: find_apks
