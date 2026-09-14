@@ -76,6 +76,25 @@ object SettingsPreferences {
         getPrefs(context).edit().putString(KEY_TOOLBAR_BUTTONS, buttons.joinToString(",")).apply()
     }
 
+    /** 候选栏空闲时工具栏按钮水平对齐：start / center / end */
+    private const val KEY_TOOLBAR_ALIGNMENT = "toolbar_alignment"
+    const val TOOLBAR_ALIGN_START = "start"
+    const val TOOLBAR_ALIGN_CENTER = "center"
+    const val TOOLBAR_ALIGN_END = "end"
+
+    fun getToolbarAlignment(context: Context): String {
+        return getPrefs(context).getString(KEY_TOOLBAR_ALIGNMENT, TOOLBAR_ALIGN_CENTER)
+            ?: TOOLBAR_ALIGN_CENTER
+    }
+
+    fun setToolbarAlignment(context: Context, alignment: String) {
+        val value = when (alignment) {
+            TOOLBAR_ALIGN_START, TOOLBAR_ALIGN_CENTER, TOOLBAR_ALIGN_END -> alignment
+            else -> TOOLBAR_ALIGN_CENTER
+        }
+        getPrefs(context).edit().putString(KEY_TOOLBAR_ALIGNMENT, value).apply()
+    }
+
 
     private const val KEY_SCHEMA_IMPORT_WARNING_DISMISSED = "schema_import_warning_dismissed"
 
@@ -686,6 +705,28 @@ object SettingsPreferences {
 
     const val KEY_CLIPBOARD_SYNC_ENABLED = "clipboard_sync_enabled"
     const val KEY_CLIPBOARD_SYNC_PLUGIN_ID = "clipboard_sync_plugin_id"
+
+    /** 图片表情无法直接上屏时，是否降级复制到系统剪贴板（默认开，保留原行为）。 */
+    private const val KEY_IMAGE_EMOJI_CLIPBOARD_FALLBACK = "image_emoji_clipboard_fallback"
+
+    /** 图片表情无法直接上屏时，是否唤起「分享到当前应用」（默认开，优先于剪贴板兜底）。 */
+    private const val KEY_IMAGE_EMOJI_SHARE_FALLBACK = "image_emoji_share_fallback"
+
+    fun isImageEmojiClipboardFallbackEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_IMAGE_EMOJI_CLIPBOARD_FALLBACK, true)
+    }
+
+    fun setImageEmojiClipboardFallbackEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_IMAGE_EMOJI_CLIPBOARD_FALLBACK, enabled).apply()
+    }
+
+    fun isImageEmojiShareFallbackEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_IMAGE_EMOJI_SHARE_FALLBACK, true)
+    }
+
+    fun setImageEmojiShareFallbackEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_IMAGE_EMOJI_SHARE_FALLBACK, enabled).apply()
+    }
 
     fun isClipboardSyncEnabled(context: Context): Boolean {
         return getPrefs(context).getBoolean(KEY_CLIPBOARD_SYNC_ENABLED, false)

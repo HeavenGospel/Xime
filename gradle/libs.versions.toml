@@ -60,6 +60,7 @@ androidx-savedstate = { group = "androidx.savedstate", name = "savedstate", vers
 
 # Coil (Image Loading)
 coil = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+coil-gif = { group = "io.coil-kt", name = "coil-gif", version.ref = "coil" }
 kaml = { group = "com.charleskorn.kaml", name = "kaml", version.ref = "kaml" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version = "1.11.0" }
 exp4j = { group = "net.objecthunter", name = "exp4j", version.ref = "exp4j" }

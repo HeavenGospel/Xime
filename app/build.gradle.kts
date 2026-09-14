@@ -219,8 +219,9 @@ dependencies {
     // SavedState
     implementation(libs.androidx.savedstate)
 
-    // Coil (Image Loading)
+    // Coil (Image Loading) + GIF/Animated WebP
     implementation(libs.coil)
+    implementation(libs.coil.gif)
 
     // OkHttp for WebSocket and model download
     implementation("com.squareup.okhttp3:okhttp:5.4.0")

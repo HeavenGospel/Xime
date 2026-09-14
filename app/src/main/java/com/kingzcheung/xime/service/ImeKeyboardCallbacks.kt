@@ -148,14 +148,42 @@ internal fun rememberImeKeyboardCallbacks(
             },
             onToolbarEditingAction = { action -> service.schemaController.handleToolbarEditingAction(action) },
             onCommitImage = { imagePath ->
-                val success = service.textCommit.commitImage(imagePath)
-                if (!success) {
-                    android.widget.Toast.makeText(
-                        service,
-                        "发送失败，已复制到剪贴板",
-                        android.widget.Toast.LENGTH_SHORT
-                    ).show()
-                    service.clipboardManager.copyImageToSystemClipboard(imagePath)
+                // 微信动图：commitContent 只会变静帧，特例直接走分享
+                if (service.textCommit.shouldShareAnimatedInstead(imagePath)) {
+                    val shared = service.textCommit.shareImageToCurrentApp(imagePath)
+                    if (!shared) {
+                        android.widget.Toast.makeText(
+                            service,
+                            "无法打开微信分享，请稍后重试",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                } else {
+                    val success = service.textCommit.commitImage(imagePath)
+                    if (!success) {
+                        val shareFallback = SettingsPreferences.isImageEmojiShareFallbackEnabled(service)
+                        val copyFallback = SettingsPreferences.isImageEmojiClipboardFallbackEnabled(service)
+                        when {
+                            shareFallback && service.textCommit.shareImageToCurrentApp(imagePath) -> {
+                                // 已拉起当前应用分享入口或系统分享面板
+                            }
+                            copyFallback -> {
+                                service.clipboardManager.copyImageToSystemClipboard(imagePath)
+                                android.widget.Toast.makeText(
+                                    service,
+                                    "发送失败，已复制到剪贴板",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                            else -> {
+                                android.widget.Toast.makeText(
+                                    service,
+                                    "当前应用不支持直接发送图片",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    }
                 }
             },
             onVoiceModeChange = { enabled ->
