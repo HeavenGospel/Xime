@@ -74,13 +74,24 @@ jobs:
             cmake-${{ runner.os }}-
 
       - name: Setup signing keystore
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          ALIAS: ${{ secrets.ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          cat > app/keystore.properties <<'EOF'
-          keyBase64=${{ secrets.SIGNING_KEY }}
-          storePassword=${{ secrets.KEY_STORE_PASSWORD }}
-          keyAlias=${{ secrets.ALIAS }}
-          keyPassword=${{ secrets.KEY_PASSWORD }}
-          EOF
+          # Avoid indented heredoc (leading spaces break base64); strip whitespace in secret.
+          KEY_B64=$(printf '%s' "$SIGNING_KEY" | tr -d '[:space:]')
+          if [ -z "$KEY_B64" ]; then
+            echo "::error::SIGNING_KEY secret is empty"
+            exit 1
+          fi
+          printf '%s\n' \
+            "keyBase64=${KEY_B64}" \
+            "storePassword=${KEY_STORE_PASSWORD}" \
+            "keyAlias=${ALIAS}" \
+            "keyPassword=${KEY_PASSWORD}" \
+            > app/keystore.properties
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
