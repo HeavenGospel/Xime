@@ -87,4 +87,29 @@ class DictionaryHelperTest {
             DictionaryHelper.collectEntries("a") { files[it] },
         )
     }
+
+    @Test
+    fun `parseImportTables strips trailing comments`() {
+        val text = """
+            import_tables:
+              - dicts/rime_mint.chars # 单字
+              - "dicts/rime_mint.base" # 基础词库
+            ...
+        """.trimIndent()
+        assertEquals(
+            listOf("dicts/rime_mint.chars", "dicts/rime_mint.base"),
+            DictionaryHelper.parseImportTables(text),
+        )
+    }
+
+    @Test
+    fun `collectEntries respects maxEntries`() {
+        val files = mapOf(
+            "a" to "...\n甲\ta\n乙\tb\n丙\tc\n",
+        )
+        assertEquals(
+            listOf(DictEntry("甲", "a"), DictEntry("乙", "b")),
+            DictionaryHelper.collectEntries("a", maxEntries = 2) { files[it] },
+        )
+    }
 }

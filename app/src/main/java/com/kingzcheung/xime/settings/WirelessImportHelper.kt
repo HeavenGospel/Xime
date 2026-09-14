@@ -247,6 +247,13 @@ class WirelessImportHelper(private val context: Context) {
                                         else UploadResult(fileName = name, success = false, error = "保存失败")
                                     )
                                 }
+                                is ImportManager.ImportResult.UserDict -> {
+                                    saved = result.result.success
+                                    _uploadResults.trySend(
+                                        if (result.result.success) UploadResult(fileName = name, success = true)
+                                        else UploadResult(fileName = name, success = false, error = result.result.message)
+                                    )
+                                }
                                 else -> {
                                     _uploadResults.trySend(
                                         UploadResult(fileName = name, success = false, error = "不支持的文件类型")

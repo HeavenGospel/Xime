@@ -135,6 +135,14 @@ class SchemaSettingsViewModel(application: Application) : AndroidViewModel(appli
                         else "导入成功，请到「本地方案」安装"
                     )
                 }
+                is ImportManager.ImportResult.UserDict -> {
+                    refresh()
+                    _importCompleted.tryEmit(Unit)
+                    showToast(
+                        if (result.result.success) result.result.message
+                        else "个人词库导入失败：${result.result.message}"
+                    )
+                }
                 is ImportManager.ImportResult.Plugin -> {
                     withContext(Dispatchers.IO) { PluginManager.loadEnabledPlugins() }
                     refresh()

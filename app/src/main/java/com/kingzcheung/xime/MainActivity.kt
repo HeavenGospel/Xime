@@ -240,6 +240,13 @@ class MainActivity : ComponentActivity() {
                         Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
                     }
                 }
+                is ImportManager.ImportResult.UserDict -> {
+                    launch(Dispatchers.Main) {
+                        val msg = if (result.result.success) result.result.message
+                        else "个人词库导入失败：${result.result.message}"
+                        Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+                    }
+                }
                 is ImportManager.ImportResult.Plugin -> {
                     com.kingzcheung.xime.plugin.core.runtime.PluginManager.loadEnabledPlugins()
                     launch(Dispatchers.Main) {

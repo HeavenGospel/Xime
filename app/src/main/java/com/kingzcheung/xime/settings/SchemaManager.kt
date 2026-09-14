@@ -30,6 +30,7 @@ import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
 import java.util.zip.ZipInputStream
@@ -359,7 +360,7 @@ object SchemaManager {
         if (entryNames.isEmpty()) return emptyList()
         val baseDir = findSchemaBaseDir(entryNames)
         return entryNames.map { it.removePrefix(baseDir) }
-            .filterNot { isProtectedImportName(it) }
+            .filterNot { isProtectedImportName(it) || isUserDictImportName(it) }
     }
 
     /** 在 market/{schemeId}/ 中查找已下载的文件。 */
@@ -390,6 +391,11 @@ object SchemaManager {
         for (file in files) {
             try {
                 val name = file.name
+                // 方案安装跳过个人词库文件（请走词库管理导入）
+                if (isUserDictImportName(name)) {
+                    FileLogger.i(TAG, "installFromMarketToRime: skip userdb ${file.name}")
+                    continue
+                }
                 // 解压前先校验压缩包完整性
                 val isArchive = name.endsWith(".zip", ignoreCase = true) ||
                     name.endsWith(".tar.gz", ignoreCase = true) || name.endsWith(".tgz", ignoreCase = true)
@@ -421,7 +427,75 @@ object SchemaManager {
                 allOk = false
             }
         }
+        // 个人词库（*.userdb.txt）不随方案包自动合并，请到「词库管理 → 个人词库」单独导入
         return allOk
+    }
+
+    /**
+     * 读取或创建 installation.yaml 中的 installation_id（librime sync 协议需要）。
+     */
+    fun ensureInstallationId(rimeDir: File): String {
+        val file = File(rimeDir, "installation.yaml")
+        if (file.exists()) {
+            val text = runCatching { file.readText(Charsets.UTF_8) }.getOrDefault("")
+            val id = Regex("""(?m)^installation_id:\s*"?([^"\r\n#]+)"?""")
+                .find(text)?.groupValues?.getOrNull(1)?.trim()
+            if (!id.isNullOrBlank()) return id
+        }
+        val id = UUID.randomUUID().toString()
+        val body = buildString {
+            appendLine("distribution_code_name: \"xime\"")
+            appendLine("distribution_name: \"Xime\"")
+            appendLine("installation_id: \"$id\"")
+        }
+        runCatching {
+            file.parentFile?.mkdirs()
+            file.writeText(body, Charsets.UTF_8)
+        }
+        return id
+    }
+
+    /**
+     * 把解压到 rime/ 各处的 `*.userdb.txt` 归位到 `sync/{installation_id}/`。
+     * @return 成功归位的文件数
+     */
+    fun processImportedUserDbFiles(context: Context): Int {
+        val rimeDir = getRimeDir(context)
+        if (!rimeDir.exists()) return 0
+        val installationId = ensureInstallationId(rimeDir)
+        val destDir = File(rimeDir, "sync/$installationId").also { it.mkdirs() }
+        val destCanonical = destDir.canonicalPath
+        var count = 0
+        rimeDir.walkTopDown()
+            .filter { it.isFile && it.name.endsWith(".userdb.txt", ignoreCase = true) }
+            .toList()
+            .forEach { src ->
+                try {
+                    val dest = File(destDir, src.name)
+                    if (src.canonicalPath == dest.canonicalPath) return@forEach
+                    // 已在正确 sync 子目录中的其它 installation 快照：复制一份到本机 id
+                    src.copyTo(dest, overwrite = true)
+                    // 删掉落在 rime 根、或 sync/ 下一层（无 installation_id）的散落文件
+                    val parent = src.parentFile?.canonicalPath.orEmpty()
+                    val syncRoot = File(rimeDir, "sync").canonicalPath
+                    val underForeignSnapshot = parent.startsWith(syncRoot + File.separator) &&
+                        parent != destCanonical &&
+                        parent != syncRoot
+                    val looseUnderSync = parent == syncRoot
+                    val underRimeRoot = parent == rimeDir.canonicalPath
+                    if (looseUnderSync || underRimeRoot) {
+                        src.delete()
+                    } else if (underForeignSnapshot) {
+                        // 保留原 snapshot 也可；为免重复，删掉非本机 id 的导入副本
+                        if (!parent.endsWith(installationId)) src.delete()
+                    }
+                    count++
+                    FileLogger.i(TAG, "Relocated userdb ${src.name} -> sync/$installationId/")
+                } catch (e: Exception) {
+                    FileLogger.w(TAG, "Failed to relocate userdb ${src.name}: ${e.message}")
+                }
+            }
+        return count
     }
 
     internal fun getBuildDir(context: Context): File =
@@ -533,6 +607,10 @@ object SchemaManager {
                base == "custom_phrase.txt" ||
                name.startsWith(".registry")
     }
+
+    /** 方案包解压时跳过用户词典（个人词库请走单独导入入口）。 */
+    fun isUserDictImportName(name: String): Boolean =
+        UserDictImporter.isUserDbFileName(name)
 
     /** macOS Apple Double 资源分支文件（__MACOSX/ 或 ._ 前缀），应当在解压时跳过。 */
     private fun isAppleDouble(name: String): Boolean =
@@ -1133,7 +1211,7 @@ object SchemaManager {
                     while (entry != null) {
                         val originalName = entry.name
                         val name = originalName.removePrefix(baseDir)
-                        if (!entry.isDirectory && !isAppleDouble(originalName) && !isProtectedImportName(name)) {
+                        if (!entry.isDirectory && !isAppleDouble(originalName) && !isProtectedImportName(name) && !isUserDictImportName(name)) {
                             val file = safeChild(targetDir, name)
                             if (file == null) {
                                 Log.w(TAG, "Skip unsafe path: $name")
@@ -1384,9 +1462,9 @@ object SchemaManager {
                     val originalName = entry.name
                     if (entry.isDirectory || isAppleDouble(originalName)) return@forEach
                     val name = originalName.removePrefix(baseDir)
-                    val file = if (isProtectedImportName(name)) null else safeChild(targetDir, name)
+                    val file = if (isProtectedImportName(name) || isUserDictImportName(name)) null else safeChild(targetDir, name)
                     if (file == null) {
-                        FileLogger.d(TAG, "Skip protected/unsafe entry: $name")
+                        FileLogger.d(TAG, "Skip protected/unsafe/userdb entry: $name")
                     } else {
                         file.parentFile?.mkdirs()
                         zip.getInputStream(entry).use { input ->
@@ -1451,7 +1529,7 @@ object SchemaManager {
                         continue
                     }
                     val name = originalName.removePrefix(baseDir)
-                    val file = if (isProtectedImportName(name)) null else safeChild(targetDir, name)
+                    val file = if (isProtectedImportName(name) || isUserDictImportName(name)) null else safeChild(targetDir, name)
                     if (file == null) {
                     } else {
                         file.parentFile?.mkdirs()

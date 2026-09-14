@@ -206,7 +206,15 @@ fun SchemaDictBrowserPanel() {
                 } else {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "共 ${uiState.allEntries.size} 条词条${if (uiState.searchQuery.isNotEmpty()) "，搜索结果 ${uiState.displayedEntries.size} 条" else ""}",
+                        text = buildString {
+                            append("共 ${uiState.allEntries.size} 条词条")
+                            if (uiState.entriesTruncated) {
+                                append("（过大，仅加载前 ${uiState.allEntries.size} 条供浏览）")
+                            }
+                            if (uiState.searchQuery.isNotEmpty()) {
+                                append("，搜索结果 ${uiState.displayedEntries.size} 条")
+                            }
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 8.dp)

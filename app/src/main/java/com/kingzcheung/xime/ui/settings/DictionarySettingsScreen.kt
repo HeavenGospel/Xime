@@ -1,5 +1,8 @@
 package com.kingzcheung.xime.ui.settings
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +28,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -36,6 +41,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -54,6 +60,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -66,12 +73,14 @@ import com.kingzcheung.xime.viewmodel.CustomPhraseUiState
 import com.kingzcheung.xime.viewmodel.CustomPhraseViewModel
 import com.kingzcheung.xime.viewmodel.PersonalDictUiState
 import com.kingzcheung.xime.viewmodel.PersonalDictViewModel
+import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DictionarySettingsContent(
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val viewModel: PersonalDictViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedDictTab by remember { mutableIntStateOf(0) }
@@ -79,6 +88,16 @@ fun DictionarySettingsContent(
     val customPhraseVM: CustomPhraseViewModel = viewModel(key = "dict_custom_phrase")
     val customPhraseState by customPhraseVM.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(uiState.selectedSchema) { customPhraseVM.setSchema(uiState.selectedSchema) }
+    LaunchedEffect(Unit) {
+        viewModel.toast.collectLatest { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+        }
+    }
+    val importUserDictLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) viewModel.importUserDict(uri)
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -129,6 +148,25 @@ fun DictionarySettingsContent(
                 ) {
                     Icon(Icons.Default.Add, contentDescription = "添加", tint = MaterialTheme.colorScheme.onPrimary)
                 }
+            } else if (selectedDictTab == 1) {
+                FloatingActionButton(
+                    onClick = {
+                        if (!uiState.isImporting) {
+                            importUserDictLauncher.launch(arrayOf("*/*"))
+                        }
+                    },
+                    containerColor = MaterialTheme.colorScheme.primary
+                ) {
+                    if (uiState.isImporting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(Icons.Default.UploadFile, contentDescription = "导入个人词库", tint = MaterialTheme.colorScheme.onPrimary)
+                    }
+                }
             }
         }
     ) { innerPadding ->
@@ -142,7 +180,9 @@ fun DictionarySettingsContent(
             }
             when (selectedDictTab) {
                 0 -> CustomPhraseTabContent(viewModel = customPhraseVM, uiState = customPhraseState)
-                1 -> SchemaDictContent(viewModel = viewModel, uiState = uiState)
+                1 -> SchemaDictContent(viewModel = viewModel, uiState = uiState, onImport = {
+                    importUserDictLauncher.launch(arrayOf("*/*"))
+                })
                 2 -> SchemaDictBrowserPanel()
             }
         }
@@ -167,10 +207,56 @@ private fun TabButton(text: String, selected: Boolean, onClick: () -> Unit, modi
 @Composable
 private fun SchemaDictContent(
     viewModel: PersonalDictViewModel,
-    uiState: PersonalDictUiState
+    uiState: PersonalDictUiState,
+    onImport: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(
+                onClick = onImport,
+                enabled = !uiState.isImporting,
+                modifier = Modifier.weight(1f),
+            ) {
+                if (uiState.isImporting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("导入")
+            }
+            OutlinedButton(
+                onClick = { viewModel.exportUserDict() },
+                enabled = uiState.hasExportableUserDb && !uiState.isExporting,
+                modifier = Modifier.weight(1f),
+            ) {
+                if (uiState.isExporting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("导出")
+            }
+        }
+        Text(
+            text = "导出当前方案的 *.userdb.txt（zip 到 Downloads）。右上角可切换方案。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
         Surface(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             shape = RoundedCornerShape(28.dp),
@@ -200,13 +286,18 @@ private fun SchemaDictContent(
         if (uiState.isLoading) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         } else {
-            Text("共 ${uiState.entries.size} 条${if (uiState.searchQuery.isNotEmpty()) "，搜索结果 ${uiState.filteredEntries.size} 条" else ""}",
+            Text(
+                buildString {
+                    append("共 ${uiState.entries.size} 条")
+                    if (uiState.fromUserDb) append("（自造词 / userdb）")
+                    if (uiState.searchQuery.isNotEmpty()) append("，搜索结果 ${uiState.filteredEntries.size} 条")
+                },
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
 
             if (uiState.entries.isEmpty()) {
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    UsageHint()
+                    UsageHint(onImport = onImport)
                 }
             } else if (uiState.filteredEntries.isEmpty()) {
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -216,7 +307,6 @@ private fun SchemaDictContent(
                 LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {
                     itemsIndexed(items = uiState.filteredEntries,
                         key = { i, e -> "${e.word}_${e.code}_$i" }) { _, entry ->
-                        // 个人词库只读，不提供编辑/删除
                         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically) {
@@ -234,12 +324,10 @@ private fun SchemaDictContent(
 }
 
 @Composable
-private fun UsageHint() {
+private fun UsageHint(onImport: () -> Unit) {
     val uriHandler = LocalUriHandler.current
     Column(
-        modifier = Modifier
-            .clickable { uriHandler.openUri("https://ime.ximei.me/features/dictionary.html") }
-            .padding(24.dp),
+        modifier = Modifier.padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(Icons.Default.Info, contentDescription = null,
@@ -248,13 +336,34 @@ private fun UsageHint() {
         Text("暂无词条", style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
-        Text("个人词库当前仅支持查看",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(16.dp))
-        Text("自定义短语的增删改 → 切换「自定义短语」标签页",
+        Text(
+            "三个标签别搞混：\n" +
+                "· 自定义短语：你手写的短句/缩写（可增删）\n" +
+                "· 个人词库：打字练出来的自造词（*.userdb.txt）\n" +
+                "· 方案词库：方案自带大词库（与导入无关，显示 5 万是上限截断）",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.primary)
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "可导入 *.userdb.txt 或 user_*.dict.yaml（如 pinyin_simp.userdb.txt）。\n" +
+                "每个方案各有一份；薄荷和简体拼音不会互相覆盖。",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(16.dp))
+        OutlinedButton(onClick = onImport) {
+            Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("导入个人词库")
+        }
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "自定义短语的增删改 → 切换「自定义短语」标签页",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clickable { uriHandler.openUri("https://ime.ximei.me/features/dictionary.html") },
+        )
     }
 }
 
@@ -299,7 +408,7 @@ private fun CustomPhraseTabContent(
             }
         } else if (uiState.entries.isEmpty()) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                UsageHint()
+                CustomPhraseEmptyHint()
             }
         } else {
             LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -355,6 +464,24 @@ private fun CustomPhraseTabContent(
             onConfirm = { viewModel.updateEntry(uiState.editIndex, uiState.editWord, uiState.editCode, uiState.editWeight.toIntOrNull()); viewModel.hideEditDialog() },
             onDismiss = viewModel::hideEditDialog,
         )
+    }
+}
+
+@Composable
+private fun CustomPhraseEmptyHint() {
+    Column(
+        modifier = Modifier.padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(Icons.Default.Info, contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
+        Spacer(Modifier.height(12.dp))
+        Text("暂无自定义短语", style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(4.dp))
+        Text("点击右下角 + 添加",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

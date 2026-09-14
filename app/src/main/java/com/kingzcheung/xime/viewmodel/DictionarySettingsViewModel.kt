@@ -21,7 +21,9 @@ data class DictionaryUiState(
     val searchQuery: String = "",
     val allEntries: List<DictEntry> = emptyList(),
     val displayedEntries: List<DictEntry> = emptyList(),
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    /** 是否因体积过大被截断（浏览器只加载前 MAX_BROWSER_ENTRIES 条）。 */
+    val entriesTruncated: Boolean = false,
 )
 
 class DictionarySettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -79,7 +81,8 @@ class DictionarySettingsViewModel(application: Application) : AndroidViewModel(a
             _uiState.update { it.copy(
                 allEntries = entries,
                 displayedEntries = entries.take(50),
-                isLoading = false
+                isLoading = false,
+                entriesTruncated = entries.size >= DictionaryHelper.MAX_BROWSER_ENTRIES,
             )}
         }
     }
