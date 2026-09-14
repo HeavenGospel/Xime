@@ -52,14 +52,23 @@ private val row3Keys = listOf(
     SymbolKey("＊", "*"),
     SymbolKey("，", ","),
     SymbolKey("“", "\""),
-    SymbolKey("’", "'"),
+    SymbolKey("‘", "'"),
     SymbolKey("。", "."),
     SymbolKey("！", "!"),
     SymbolKey("？", "?"),
 )
 
-/** 当前模式下的显示/输出字符 */
-private fun SymbolKey.resolve(asciiMode: Boolean): String = if (asciiMode) ascii else full
+/** 键帽显示 */
+private fun SymbolKey.label(asciiMode: Boolean): String = if (asciiMode) ascii else full
+
+/**
+ * 实际上屏字符。引号始终走 ASCII，交给 Rime punctuator pair 左右交替；
+ * 若直接提交全角 “/‘，会每次都是左引号。
+ */
+private fun SymbolKey.commitValue(asciiMode: Boolean): String {
+    if (ascii == "\"" || ascii == "'") return ascii
+    return if (asciiMode) ascii else full
+}
 
 @Composable
 fun CommonSymbolKeyboardLayout(
@@ -204,14 +213,15 @@ fun CommonSymbolKeyboardLayout(
                                 .weight(1f),
                         ) {
                             row2Keys.forEach { sym ->
-                                val ch = sym.resolve(localAsciiMode)
+                                val label = sym.label(localAsciiMode)
+                                val commit = sym.commitValue(localAsciiMode)
                                 KeyButton(
-                                    text = ch,
-                                    onClick = { onKeyPress(ch) },
+                                    text = label,
+                                    onClick = { onKeyPress(commit) },
                                     backgroundColor = keyBackgroundColor,
                                     textColor = keyTextColor,
                                     modifier = Modifier.weight(1f),
-                                    onPress = { onKeyPressDown?.invoke(ch) },
+                                    onPress = { onKeyPressDown?.invoke(commit) },
                                     shadowEnabled = shadowEnabled,
                                     shadowElevation = shadowElevation,
                                     shadowShapeRadius = shadowShapeRadius,
@@ -238,14 +248,15 @@ fun CommonSymbolKeyboardLayout(
                                 fontSize = 14.sp,
                             )
                             row3Keys.forEach { sym ->
-                                val ch = sym.resolve(localAsciiMode)
+                                val label = sym.label(localAsciiMode)
+                                val commit = sym.commitValue(localAsciiMode)
                                 KeyButton(
-                                    text = ch,
-                                    onClick = { onKeyPress(ch) },
+                                    text = label,
+                                    onClick = { onKeyPress(commit) },
                                     backgroundColor = keyBackgroundColor,
                                     textColor = keyTextColor,
                                     modifier = Modifier.weight(1f),
-                                    onPress = { onKeyPressDown?.invoke(ch) },
+                                    onPress = { onKeyPressDown?.invoke(commit) },
                                     shadowEnabled = shadowEnabled,
                                     shadowElevation = shadowElevation,
                                     shadowShapeRadius = shadowShapeRadius,
@@ -415,14 +426,15 @@ internal fun CommonSymbolLandscapeContent(
                     .fillMaxWidth()
                     .weight(1f)) {
                     row2Keys.take(5).forEach { sym ->
-                        val ch = sym.resolve(isAsciiMode)
+                        val label = sym.label(isAsciiMode)
+                        val commit = sym.commitValue(isAsciiMode)
                         KeyButton(
-                            text = ch,
-                            onClick = { onKeyPress(ch) },
+                            text = label,
+                            onClick = { onKeyPress(commit) },
                             backgroundColor = keyBackgroundColor,
                             textColor = keyTextColor,
                             modifier = Modifier.weight(1f),
-                            onPress = { onKeyPressDown?.invoke(ch) },
+                            onPress = { onKeyPressDown?.invoke(commit) },
                             shadowEnabled = shadowEnabled,
                             shadowElevation = shadowElevation,
                             shadowShapeRadius = shadowShapeRadius,
@@ -446,14 +458,15 @@ internal fun CommonSymbolLandscapeContent(
                         fontSize = 12.sp,
                     )
                     row3Keys.take(4).forEach { sym ->
-                        val ch = sym.resolve(isAsciiMode)
+                        val label = sym.label(isAsciiMode)
+                        val commit = sym.commitValue(isAsciiMode)
                         KeyButton(
-                            text = ch,
-                            onClick = { onKeyPress(ch) },
+                            text = label,
+                            onClick = { onKeyPress(commit) },
                             backgroundColor = keyBackgroundColor,
                             textColor = keyTextColor,
                             modifier = Modifier.weight(1f),
-                            onPress = { onKeyPressDown?.invoke(ch) },
+                            onPress = { onKeyPressDown?.invoke(commit) },
                             shadowEnabled = shadowEnabled,
                             shadowElevation = shadowElevation,
                             shadowShapeRadius = shadowShapeRadius,
@@ -547,14 +560,15 @@ internal fun CommonSymbolLandscapeContent(
                     .fillMaxWidth()
                     .weight(1f)) {
                     row2Keys.drop(5).forEach { sym ->
-                        val ch = sym.resolve(isAsciiMode)
+                        val label = sym.label(isAsciiMode)
+                        val commit = sym.commitValue(isAsciiMode)
                         KeyButton(
-                            text = ch,
-                            onClick = { onKeyPress(ch) },
+                            text = label,
+                            onClick = { onKeyPress(commit) },
                             backgroundColor = keyBackgroundColor,
                             textColor = keyTextColor,
                             modifier = Modifier.weight(1f),
-                            onPress = { onKeyPressDown?.invoke(ch) },
+                            onPress = { onKeyPressDown?.invoke(commit) },
                             shadowEnabled = shadowEnabled,
                             shadowElevation = shadowElevation,
                             shadowShapeRadius = shadowShapeRadius,
@@ -566,14 +580,15 @@ internal fun CommonSymbolLandscapeContent(
                     .fillMaxWidth()
                     .weight(1f)) {
                     row3Keys.drop(4).forEach { sym ->
-                        val ch = sym.resolve(isAsciiMode)
+                        val label = sym.label(isAsciiMode)
+                        val commit = sym.commitValue(isAsciiMode)
                         KeyButton(
-                            text = ch,
-                            onClick = { onKeyPress(ch) },
+                            text = label,
+                            onClick = { onKeyPress(commit) },
                             backgroundColor = keyBackgroundColor,
                             textColor = keyTextColor,
                             modifier = Modifier.weight(1f),
-                            onPress = { onKeyPressDown?.invoke(ch) },
+                            onPress = { onKeyPressDown?.invoke(commit) },
                             shadowEnabled = shadowEnabled,
                             shadowElevation = shadowElevation,
                             shadowShapeRadius = shadowShapeRadius,

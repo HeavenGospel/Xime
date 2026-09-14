@@ -436,6 +436,8 @@ fun SwipeableKeyButton(
     var buttonBounds by remember { mutableStateOf(Rect(0f, 0f, 0f, 0f)) }
     var dragActivated by remember { mutableStateOf(false) }
     var cancelClickDueToCursorMove by remember { mutableStateOf(false) }
+    /** 长按已选符号后，禁止拖拽手势 onDragEnd 再触发单击（否则会把字母送进 Rime）。 */
+    var longPressHandled by remember { mutableStateOf(false) }
     val cursorMoveActive = LocalCursorMoveActive.current
     ClearKeyPressWhenCursorMoving {
         isPressed = false
@@ -495,6 +497,9 @@ fun SwipeableKeyButton(
                 detectDragGestures(
                     onDragStart = {
                         cancelClickDueToCursorMove = false
+                        // 注意：不要在这里重置 longPressHandled。
+                        // 长按气泡出现后的微小抖动也会进 onDragStart，若此时清零，
+                        // 松手时 onDragEnd 会再触发单击，把字母送进 Rime。
                         dragActivated = true
                         isPressed = true
                         dragOffsetX = 0f
@@ -505,7 +510,8 @@ fun SwipeableKeyButton(
                         isSwipeDown = false
                     },
                     onDragEnd = {
-                        val shouldClick = !hasTriggeredSwipeUp && !hasTriggeredSwipeDown &&
+                        val shouldClick = !longPressHandled &&
+                            !hasTriggeredSwipeUp && !hasTriggeredSwipeDown &&
                             abs(dragOffsetX) < horizontalClickCancelThreshold &&
                             !cursorMoveActive.value && !cancelClickDueToCursorMove
                         if (shouldClick) {
@@ -520,6 +526,7 @@ fun SwipeableKeyButton(
                         isSwiping = false
                         isSwipeDown = false
                         dragActivated = false
+                        longPressHandled = false
                         currentOnSwipeStateChange?.invoke(SwipeState(false, null, false, emptyList(), false, null), buttonBounds)
                     },
                     onDragCancel = {
@@ -532,9 +539,15 @@ fun SwipeableKeyButton(
                         isSwiping = false
                         isSwipeDown = false
                         dragActivated = false
+                        longPressHandled = false
                         currentOnSwipeStateChange?.invoke(SwipeState(false, null, false, emptyList(), false, null), buttonBounds)
                     },
                     onDrag = { change, dragAmount ->
+                        // 长按气泡已弹出：只更新选中项，不再走上滑/下滑提交
+                        if (longPressHandled) {
+                            change.consume()
+                            return@detectDragGestures
+                        }
                         dragOffsetX += dragAmount.x
                         dragOffsetY += dragAmount.y
                         
@@ -603,6 +616,7 @@ fun SwipeableKeyButton(
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     cancelClickDueToCursorMove = false
+                    longPressHandled = false
                     isPressed = true
                     var localLongPressTriggered = false
                     var selectedIdx = 0
@@ -616,6 +630,8 @@ fun SwipeableKeyButton(
                     
                     val longPressJob = scope.launch {
                         delay(400L)
+                        // 气泡一出现就占住，防止后续 onDragStart/onDragEnd 再补发单击
+                        longPressHandled = true
                         localLongPressTriggered = true
                         view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
                         currentOnSwipeStateChange?.invoke(
@@ -659,7 +675,11 @@ fun SwipeableKeyButton(
                                     .coerceIn(0, items.size - 1)
                                 
                                 if (selectedIdx != lastReportedIdx) {
+                                    val shouldTick = lastReportedIdx >= 0
                                     lastReportedIdx = selectedIdx
+                                    if (shouldTick) {
+                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                                    }
                                     currentOnSwipeStateChange?.invoke(
                                         SwipeState(
                                             isPressed = true,
@@ -677,6 +697,7 @@ fun SwipeableKeyButton(
                             if (event.type == androidx.compose.ui.input.pointer.PointerEventType.Release) {
                                 completed = true
                                 if (localLongPressTriggered) {
+                                    longPressHandled = true
                                     val selected = items.getOrNull(selectedIdx)
                                     if (selected != null) {
                                         currentOnLongPressSelect?.invoke(selected)

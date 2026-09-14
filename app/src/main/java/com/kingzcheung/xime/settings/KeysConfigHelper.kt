@@ -674,18 +674,14 @@ object KeysConfigHelper {
         val defaultText = readAssetText(context, XIME_CONFIG_FILE) ?: return null
         val defaultZh = parseKeyboardYamlSection(defaultText, "qwerty") ?: return null
         val defaultEn = parseKeyboardYamlSection(defaultText, "qwerty_en") ?: emptyMap()
-        // 支持两种来源：files/rime/（浏览器导入）或 assets/（内置），自动 fallback
+        // 用户目录优先；若用户文件没有 keyboard.keys，再回退 assets 内置的 xime.custom.yaml
+        // （避免仅含主题的 xime.custom.yaml 挡住内置 Fcitx 上滑/长按配置）
         val userData = readUserDataText(context, XIME_CUSTOM_CONFIG_FILE)
-        val customZh: Map<String, KeyGestureConfig>?
-        val customEn: Map<String, KeyGestureConfig>?
-        if (userData != null) {
-            customZh = parseKeyboardYamlSection(userData, "qwerty")
-            customEn = parseKeyboardYamlSection(userData, "qwerty_en")
-        } else {
-            val assetText = readAssetText(context, XIME_CUSTOM_CONFIG_FILE)
-            customZh = assetText?.let { parseKeyboardYamlSection(it, "qwerty") }
-            customEn = assetText?.let { parseKeyboardYamlSection(it, "qwerty_en") }
-        }
+        val assetCustom = readAssetText(context, XIME_CUSTOM_CONFIG_FILE)
+        val customZh = userData?.let { parseKeyboardYamlSection(it, "qwerty") }
+            ?: assetCustom?.let { parseKeyboardYamlSection(it, "qwerty") }
+        val customEn = userData?.let { parseKeyboardYamlSection(it, "qwerty_en") }
+            ?: assetCustom?.let { parseKeyboardYamlSection(it, "qwerty_en") }
         val zh = if (customZh != null) defaultZh + customZh else defaultZh
         val en = if (customEn != null) defaultEn + customEn else defaultEn
         return Pair(zh, en)
