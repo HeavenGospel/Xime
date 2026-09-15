@@ -12,7 +12,7 @@
 > This is a **fork** of the official Android IME [ximeiorg/Xime](https://github.com/ximeiorg/Xime), with UX and feature enhancements for personal use.  
 > - Upstream: [https://github.com/ximeiorg/Xime](https://github.com/ximeiorg/Xime)  
 > - This fork: [https://github.com/HeavenGospel/Xime](https://github.com/HeavenGospel/Xime)  
-> - Version: **2.8.3**  
+> - Version: **2.8.4**  
 > - Change log (Chinese): [docs/changelog-2026-09-session.md](docs/changelog-2026-09-session.md)
 
 Official docs & ecosystem still follow upstream: [docs](https://ime.ximei.me) · [Windows](https://github.com/ximeiorg/winxime) · [Linux](https://github.com/ximeiorg/xime-wayland)

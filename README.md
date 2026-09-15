@@ -12,7 +12,7 @@
 > 本仓库是 [ximeiorg/Xime](https://github.com/ximeiorg/Xime)（曦码官方 Android 输入法）的 **fork**，在上游基础上按个人使用习惯做了体验增强与功能补全。  
 > - 上游项目：[https://github.com/ximeiorg/Xime](https://github.com/ximeiorg/Xime)  
 > - 本 fork：[https://github.com/HeavenGospel/Xime](https://github.com/HeavenGospel/Xime)  
-> - 当前版本：**2.8.3**  
+> - 当前版本：**2.8.4**  
 > - 改动明细见：[docs/changelog-2026-09-session.md](docs/changelog-2026-09-session.md)
 
 官方文档与生态仍以原项目为准：[使用文档](https://ime.ximei.me) · [Windows](https://github.com/ximeiorg/winxime) · [Linux](https://github.com/ximeiorg/xime-wayland)
@@ -128,7 +128,7 @@ cd Xime
 ./gradlew assembleRelease
 ```
 
-产物示例：`app/build/outputs/apk/release/Xime-2.8.3-arm64-v8a.apk`
+产物示例：`app/build/outputs/apk/release/Xime-2.8.4-arm64-v8a.apk`
 
 ## 文档
 
