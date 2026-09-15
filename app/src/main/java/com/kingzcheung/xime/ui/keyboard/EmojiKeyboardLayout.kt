@@ -67,6 +67,7 @@ import com.kingzcheung.xime.data.RecentUsageStore
 import com.kingzcheung.xime.plugin.ExtensionManager
 import com.kingzcheung.xime.plugin.core.api.PluginResultItem
 import com.kingzcheung.xime.plugin.core.api.PluginIcon
+import com.kingzcheung.xime.MainActivity
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.ui.emoji.FavoriteStickerImportActivity
 import android.view.HapticFeedbackConstants
@@ -607,14 +608,47 @@ fun EmojiKeyboardLayout(
                 Spacer(modifier = Modifier.weight(1f))
             }
 
-            KeyButton(
-                text = "删除",
-                onClick = { onEmojiSelect("delete") },
-                backgroundColor = backgroundColor,
-                textColor = textColor,
-                modifier = Modifier.width(48.dp),
-                fontSize = 12.sp
-            )
+            val isFavoritesTab = selectedTopTabIndex == topTabFavorites
+            val pluginGroupIdx = selectedTopTabIndex - topTabPluginBase
+            val isPluginTab = selectedTopTabIndex >= topTabPluginBase &&
+                pluginGroupIdx in pluginGroupEntries.indices
+            val currentPluginId = if (isPluginTab) {
+                pluginGroupEntries[pluginGroupIdx].key
+            } else {
+                null
+            }
+
+            if (isFavoritesTab || isPluginTab) {
+                KeyButton(
+                    text = "设置",
+                    onClick = {
+                        onHapticFeedback?.invoke()
+                        val intent = if (isFavoritesTab) {
+                            MainActivity.buildOpenSettingsIntent(context, "favorite_stickers")
+                        } else {
+                            MainActivity.buildOpenSettingsIntent(
+                                context,
+                                "plugins",
+                                pluginManageId = currentPluginId,
+                            )
+                        }
+                        context.startActivity(intent)
+                    },
+                    backgroundColor = backgroundColor,
+                    textColor = textColor,
+                    modifier = Modifier.width(48.dp),
+                    fontSize = 12.sp,
+                )
+            } else {
+                KeyButton(
+                    text = "删除",
+                    onClick = { onEmojiSelect("delete") },
+                    backgroundColor = backgroundColor,
+                    textColor = textColor,
+                    modifier = Modifier.width(48.dp),
+                    fontSize = 12.sp,
+                )
+            }
         }
 
         // 底部留空

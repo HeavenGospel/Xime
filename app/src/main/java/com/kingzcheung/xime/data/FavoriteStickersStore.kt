@@ -8,8 +8,12 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import android.webkit.MimeTypeMap
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +43,10 @@ object FavoriteStickersStore {
     /** 表情面板子分类名（与 EmojiCategory.name 对齐）。 */
     const val CATEGORY_NAME = "收藏"
     const val CATEGORY_ICON = "⭐"
+
+    private const val FORMAT_ID = "xime-favorite-stickers"
+    private const val FORMAT_VERSION = 1
+    private const val BUNDLE_INDEX = "index.json"
 
     data class Sticker(
         val id: String,
@@ -161,6 +169,101 @@ object FavoriteStickersStore {
         writeIndex(context, current)
         _stickers.value = current
         true
+    }
+
+    data class ImportResult(
+        val count: Int,
+        val skipped: Int = 0,
+    )
+
+    /** 导出全部收藏表情为 zip（含 index.json + 图片文件）。 */
+    suspend fun exportBundleZip(context: Context): ByteArray = withContext(Dispatchers.IO) {
+        ensureLoaded(context)
+        val list = _stickers.value
+        ByteArrayOutputStream().use { bos ->
+            ZipOutputStream(bos).use { zos ->
+                val indexBytes = buildBundleIndexJson(list).toByteArray(Charsets.UTF_8)
+                zos.putNextEntry(ZipEntry(BUNDLE_INDEX))
+                zos.write(indexBytes)
+                zos.closeEntry()
+                for (sticker in list) {
+                    val file = fileFor(context, sticker)
+                    if (!file.exists()) continue
+                    zos.putNextEntry(ZipEntry(sticker.fileName))
+                    file.inputStream().use { it.copyTo(zos) }
+                    zos.closeEntry()
+                }
+            }
+            bos.toByteArray()
+        }
+    }
+
+    /**
+     * 从 zip 导入收藏表情。
+     * @param replace true 整盘替换；false 合并（导入项置顶，同 id 以导入为准）
+     */
+    suspend fun importBundleZip(
+        context: Context,
+        bytes: ByteArray,
+        replace: Boolean = true,
+    ): ImportResult = withContext(Dispatchers.IO) {
+        ensureLoaded(context)
+        val entries = readZipEntries(bytes)
+        val indexBytes = entries[BUNDLE_INDEX]
+            ?: throw IllegalArgumentException("不是曦码收藏表情包（缺少 index.json）")
+        val imported = parseBundleIndex(String(indexBytes, Charsets.UTF_8))
+        if (imported.isEmpty()) {
+            throw IllegalArgumentException("备份包中没有表情")
+        }
+
+        var skipped = 0
+        val extracted = mutableListOf<Sticker>()
+        for (sticker in imported) {
+            if (!isSafeEntryName(sticker.fileName)) {
+                skipped++
+                continue
+            }
+            val data = entries[sticker.fileName]
+            if (data == null) {
+                skipped++
+                continue
+            }
+            File(dir(context), sticker.fileName).writeBytes(data)
+            extracted.add(sticker)
+        }
+        if (extracted.isEmpty()) {
+            throw IllegalArgumentException("备份包中没有可用的表情文件")
+        }
+
+        if (replace) {
+            for (old in _stickers.value) {
+                runCatching { fileFor(context, old).delete() }
+            }
+            val trimmed = extracted.take(MAX_COUNT)
+            if (trimmed.size < extracted.size) {
+                skipped += extracted.size - trimmed.size
+                for (drop in extracted.drop(MAX_COUNT)) {
+                    runCatching { fileFor(context, drop).delete() }
+                }
+            }
+            writeIndex(context, trimmed)
+            _stickers.value = trimmed
+            return@withContext ImportResult(count = trimmed.size, skipped = skipped)
+        }
+
+        val merged = _stickers.value.toMutableList()
+        for (sticker in extracted.asReversed()) {
+            merged.removeAll { it.id == sticker.id }
+            merged.add(0, sticker)
+        }
+        while (merged.size > MAX_COUNT) {
+            val old = merged.removeAt(merged.lastIndex)
+            runCatching { fileFor(context, old).delete() }
+            skipped++
+        }
+        writeIndex(context, merged)
+        _stickers.value = merged
+        ImportResult(count = extracted.size, skipped = skipped)
     }
 
     /** 是否为应跳过裁剪的动图（原样导入）。 */
@@ -390,6 +493,13 @@ object FavoriteStickersStore {
     }
 
     private fun writeIndex(context: Context, list: List<Sticker>) {
+        indexFile(context).writeText(buildBundleIndexJson(list))
+    }
+
+    private fun buildBundleIndexJson(list: List<Sticker>): String {
+        val root = JSONObject()
+        root.put("format", FORMAT_ID)
+        root.put("version", FORMAT_VERSION)
         val arr = JSONArray()
         list.forEach { s ->
             arr.put(
@@ -399,6 +509,49 @@ object FavoriteStickersStore {
                     .put("mime", s.mime)
             )
         }
-        indexFile(context).writeText(arr.toString())
+        root.put("stickers", arr)
+        return root.toString(2)
+    }
+
+    private fun parseBundleIndex(text: String): List<Sticker> {
+        val root = JSONObject(text.trim().trimStart('\uFEFF'))
+        val format = root.optString("format", "")
+        if (format.isNotEmpty() && format != FORMAT_ID) {
+            throw IllegalArgumentException("不是曦码收藏表情包（format=$format）")
+        }
+        val arr = root.optJSONArray("stickers") ?: JSONArray()
+        return buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val id = o.getString("id")
+                val fileName = o.getString("file")
+                val mime = o.optString("mime", "image/png")
+                if (!isSafeEntryName(fileName)) continue
+                add(Sticker(id, fileName, mime))
+            }
+        }
+    }
+
+    private fun readZipEntries(bytes: ByteArray): Map<String, ByteArray> {
+        val map = linkedMapOf<String, ByteArray>()
+        ZipInputStream(bytes.inputStream()).use { zis ->
+            while (true) {
+                val entry = zis.nextEntry ?: break
+                if (!entry.isDirectory) {
+                    val name = entry.name.substringAfterLast('/')
+                    if (isSafeEntryName(name)) {
+                        map[name] = zis.readBytes()
+                    }
+                }
+                zis.closeEntry()
+            }
+        }
+        return map
+    }
+
+    private fun isSafeEntryName(name: String): Boolean {
+        if (name.isEmpty() || name.contains("..")) return false
+        if (name.contains('/') || name.contains('\\')) return false
+        return true
     }
 }
