@@ -682,9 +682,85 @@ object KeysConfigHelper {
             ?: assetCustom?.let { parseKeyboardYamlSection(it, "qwerty") }
         val customEn = userData?.let { parseKeyboardYamlSection(it, "qwerty_en") }
             ?: assetCustom?.let { parseKeyboardYamlSection(it, "qwerty_en") }
-        val zh = if (customZh != null) defaultZh + customZh else defaultZh
-        val en = if (customEn != null) defaultEn + customEn else defaultEn
+        val zhMerged = if (customZh != null) defaultZh + customZh else defaultZh
+        val enMerged = if (customEn != null) defaultEn + customEn else defaultEn
+        // Prefs 覆盖层优先于 YAML（按键自定义页写入）
+        val zh = KeyCustomizeStore.applyOverrides(zhMerged, KeyCustomizeStore.loadOverrides(context, isAsciiMode = false))
+        val en = KeyCustomizeStore.applyOverrides(enMerged, KeyCustomizeStore.loadOverrides(context, isAsciiMode = true))
         return Pair(zh, en)
+    }
+
+    /**
+     * 保存单键自定义并热重载。
+     * @return 重载后的该键有效配置
+     */
+    fun saveKeyCustomization(
+        context: Context,
+        isAsciiMode: Boolean,
+        key: String,
+        override: KeyCustomizeStore.KeyOverride,
+    ): KeyGestureConfig? {
+        KeyCustomizeStore.saveOverride(context, isAsciiMode, key, override)
+        loadConfig(context)
+        return getKeyGesture(key, isAsciiMode)
+    }
+
+    /** 清除单键自定义并热重载。 */
+    fun clearKeyCustomization(context: Context, isAsciiMode: Boolean, key: String) {
+        KeyCustomizeStore.clearOverride(context, isAsciiMode, key)
+        loadConfig(context)
+    }
+
+    /** 清除某盘（中/英）全部按键自定义并热重载。 */
+    fun clearAllKeyCustomizations(context: Context, isAsciiMode: Boolean) {
+        KeyCustomizeStore.clearAll(context, isAsciiMode)
+        loadConfig(context)
+    }
+
+    /** 套用键面预设并热重载（只改显示，上屏仍为字母）。 */
+    fun applyKeyFacePreset(context: Context, isAsciiMode: Boolean, presetId: String) {
+        val preset = KeyCustomizeStore.KEY_FACE_PRESETS.firstOrNull { it.id == presetId }
+            ?: return
+        KeyCustomizeStore.applyTapLabelPreset(context, isAsciiMode, preset.labels)
+        loadConfig(context)
+    }
+
+    /** 套用仓颉字根键面并热重载（只改显示，上屏仍为字母）。 */
+    fun applyCangjieRadicals(context: Context, isAsciiMode: Boolean) {
+        applyKeyFacePreset(context, isAsciiMode, "cangjie")
+    }
+
+    /** 导出按键自定义（中英文）为 JSON 文本。 */
+    fun exportKeyCustomizationsJson(context: Context): String =
+        KeyCustomizeStore.exportBundleJson(context)
+
+    /**
+     * 导入按键自定义 JSON 并热重载。
+     * @param replace 为 true 时整盘替换；false 时与现有合并（同键以导入为准）。
+     */
+    fun importKeyCustomizationsJson(
+        context: Context,
+        json: String,
+        replace: Boolean = true,
+    ): KeyCustomizeStore.ImportResult {
+        val result = KeyCustomizeStore.importBundleJson(context, json, replace)
+        loadConfig(context)
+        return result
+    }
+
+    /**
+     * 未应用 Prefs 覆盖前的 YAML 合并结果（用于编辑页对比「当前有效 vs 文件默认」）。
+     */
+    fun getYamlKeyGesture(context: Context, key: String, isAsciiMode: Boolean): KeyGestureConfig? {
+        val defaultText = readAssetText(context, XIME_CONFIG_FILE) ?: return null
+        val section = if (isAsciiMode) "qwerty_en" else "qwerty"
+        val defaultMap = parseKeyboardYamlSection(defaultText, section) ?: emptyMap()
+        val userData = readUserDataText(context, XIME_CUSTOM_CONFIG_FILE)
+        val assetCustom = readAssetText(context, XIME_CUSTOM_CONFIG_FILE)
+        val customMap = userData?.let { parseKeyboardYamlSection(it, section) }
+            ?: assetCustom?.let { parseKeyboardYamlSection(it, section) }
+        val merged = if (customMap != null) defaultMap + customMap else defaultMap
+        return merged[key.lowercase()]
     }
 
     /** 从 xime.yaml + xime.custom.yaml 合并解析键盘颜色配置（字段级一路 fallback）。 */
@@ -1231,15 +1307,15 @@ object KeysConfigHelper {
     /** 从 xime.yaml 加载默认主题 ID（style.color_scheme 的 light 字段）。 */
     fun loadDefaultThemeId(context: Context): String {
         val merged = loadMergedConfig(context)
-        return merged.style?.colorScheme?.light ?: "lavender_purple"
+        return merged.style?.colorScheme?.light ?: "dynamic"
     }
 
     /** 根据显示模式加载对应的默认主题 ID。 */
     fun loadThemeIdForMode(context: Context, isDark: Boolean): String {
         val merged = loadMergedConfig(context)
-        val cs = merged.style?.colorScheme ?: return "lavender_purple"
-        return if (isDark) (cs.dark ?: cs.light ?: "lavender_purple")
-               else cs.light ?: "lavender_purple"
+        val cs = merged.style?.colorScheme ?: return "dynamic"
+        return if (isDark) (cs.dark ?: cs.light ?: "dynamic")
+               else cs.light ?: "dynamic"
     }
 
     /** 从 xime.yaml 加载默认显示模式（style.dark_mode）。 */
@@ -1275,8 +1351,7 @@ object KeysConfigHelper {
     fun getKeyDisplayLabel(key: String, isAsciiMode: Boolean = false): String {
         val config = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
         val label = config[key.lowercase()]?.tap?.label
-        if (label.isNullOrEmpty()) return key.uppercase()
-        return if (label.any { it in 'a'..'z' || it in 'A'..'Z' }) label.uppercase() else label
+        return if (label.isNullOrEmpty()) key else label
     }
 
     fun getKeyCommitValue(key: String, isAsciiMode: Boolean = false): String {

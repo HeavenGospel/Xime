@@ -453,7 +453,7 @@ fun KeyboardLayout(
                                     } else {
                                         rawCommitValue
                                     }
-                                    // 中/英键帽均显示大写字母（与中文键盘一致）；上屏仍按 shift 决定大小写
+                                    // 键面文字来自 tap.label / 键面预设；上屏仍按 shift 决定
                                     val displayText = KeysConfigHelper.getKeyDisplayLabel(key, isAsciiMode)
 
                                     val onClick = remember(key, commitValue, onKeyPress) { { onKeyPress(commitValue) } }
@@ -990,7 +990,7 @@ fun KeyboardRowWithConfig(
             } else {
                 rawCommitValue
             }
-            // 中/英键帽均显示大写字母（与中文键盘一致）；上屏仍按 shift 决定大小写
+            // 键面文字来自 tap.label / 键面预设；上屏仍按 shift 决定
             val displayText = KeysConfigHelper.getKeyDisplayLabel(key, isAsciiMode)
 
             val onClick = remember(key, commitValue, onKeyPress) { { onKeyPress(commitValue) } }
