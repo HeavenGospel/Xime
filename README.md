@@ -2,165 +2,112 @@
   <img src="docs/logo.jpg" alt="Xime Logo" width="600">
 </p>
 
-<h1 align="center">Xime - Wubi / Pinyin Input Method for Android</h1>
+<h1 align="center">Xime (Fork) — Personal Improvements</h1>
 
 <p align="center">
   <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a>
 </p>
 
-[<img src="https://f-droid.org/badge/get-it-on.png"
-    alt="Get it on F-Droid"
-    height="80">](https://f-droid.org/packages/com.kingzcheung.xime)
+> **About this repository**  
+> This is a **fork** of the official Android IME [ximeiorg/Xime](https://github.com/ximeiorg/Xime), with UX and feature enhancements for personal use.  
+> - Upstream: [https://github.com/ximeiorg/Xime](https://github.com/ximeiorg/Xime)  
+> - This fork: [https://github.com/HeavenGospel/Xime](https://github.com/HeavenGospel/Xime)  
+> - Version: **2.8.3**  
+> - Change log (Chinese): [docs/changelog-2026-09-session.md](docs/changelog-2026-09-session.md)
 
+Official docs & ecosystem still follow upstream: [docs](https://ime.ximei.me) · [Windows](https://github.com/ximeiorg/winxime) · [Linux](https://github.com/ximeiorg/xime-wayland)
 
-[Windows Version](https://github.com/ximeiorg/winxime) | [Linux Version](https://github.com/ximeiorg/xime-wayland) | [Predictive Text Model](https://github.com/ximeiorg/predictive-text) | [Handwriting Model](https://github.com/ximeiorg/ochwpro)
-
-An Android input method built on the [Rime](https://rime.im/) engine, designed for efficient Chinese text input with Wubi (五笔) and Pinyin support.
+An Android Wubi / Pinyin IME built on [Rime](https://rime.im/), keeping upstream capabilities plus the fork changes below.
 
 ---
 
-> This input method supports both Wubi (五笔) and Pinyin input. The author primarily uses Wubi with Pinyin as a fallback, so resources lean toward Wubi.
+## Fork improvements (vs upstream)
 
-<table align="center">
-  <tr>
-    <td><img src="docs/Screenshot/full_keyboard_light.jpg" width="180"><br><p align="center">Full Keyboard (Light)</p></td>
-    <td><img src="docs/Screenshot/full_keyboard_dark.jpg" width="180"><br><p align="center">Full Keyboard (Dark)</p></td>
-    <td><img src="docs/Screenshot/全键盘_下滑_light.jpg" width="180"><br><p align="center">Radical Swipe</p></td>
-    <td><img src="docs/Screenshot/shotcut_light.jpg" width="180"><br><p align="center">Quick Actions</p></td>
-  </tr>
-  <tr>
-    <td><img src="docs/Screenshot/floating.jpg" width="180"><br><p align="center">Floating Keyboard</p></td>
-    <td><img src="docs/Screenshot/t9_pinyin.jpg" width="180"><br><p align="center">T9 Pinyin</p></td>
-    <td><img src="docs/Screenshot/number.jpg" width="180"><br><p align="center">Numpad</p></td>
-    <td><img src="docs/Screenshot/symbol.jpg" width="180"><br><p align="center">Symbols</p></td>
-  </tr>
-  <tr>
-    <td><img src="docs/Screenshot/hw.png" width="180"><br><p align="center">Handwriting</p></td>
-    <td><img src="docs/Screenshot/hw2.png" width="180"><br><p align="center">Handwriting (Candidates)</p></td>
-    <td><img src="docs/Screenshot/voice.jpg" width="180"><br><p align="center">Voice Input</p></td>
-    <td><img src="docs/Screenshot/emoji.jpg" width="180"><br><p align="center">Emoji Keyboard</p></td>
-  </tr>
-  <tr>
-    <td><img src="docs/Screenshot/theme_light.jpg" width="180"><br><p align="center">Theme Settings (Light)</p></td>
-    <td><img src="docs/Screenshot/theme_dark.jpg" width="180"><br><p align="center">Theme Settings (Dark)</p></td>
-    <td><img src="docs/Screenshot/plugin_light.jpg" width="180"><br><p align="center">Plugin Manager</p></td>
-    <td><img src="docs/Screenshot/扩展商店.png" width="180"><br><p align="center">Extension Store</p></td>
-  </tr>
-</table>
+### Keyboard & input
 
-## Features
+| Feature | Notes |
+|---------|--------|
+| **Swipe cursor** | Tunable haptic; sensitivity; no mis-tap after swipe; no jump when reversing |
+| **Syllable break** | Space inserts `'` in composing Pinyin (e.g. `xi'an`) |
+| **CN/EN punctuation** | Swipe / long-press follow mode; paired quotes via Rime |
+| **Long-press symbols** | No accidental Pinyin candidates; haptic when sliding options |
+| **Schema menu toggles** | Show current state; highlight non-default; menu stays open |
 
-- **Multiple Input Schemas** - Built-in Wubi 86/98, Pinyin, and mixed schemas; supports custom schemas (Shuangpin, Stroke, etc.) via the schema marketplace or wireless import
-- **Rime Engine** - Powered by the mature and reliable Rime input method engine for accurate Chinese input
-- **Rich Keyboard Layouts** - QWERTY full keyboard, T9 Pinyin, Stroke 9-key, Handwriting, Numpad (with calculator)
-- **Floating Keyboard** - Floating card style with drag support, semi-transparent rounded design
-- **Voice-to-Text** - Local offline ASR (built-in streaming zipformer2 engine) plus online ASR plugins (FunAsr, Volc, etc.)
-- **AI Enhancement** - Transformer-based predictive text for faster input
-- **Clean UI** - Material Design 3, light/dark themes with multiple color schemes
-- **Keyboard Adjustment** - Adjustable keyboard height and position
-- **Toolbar Customization** - Customizable toolbar button layout and functions
-- **Haptic Feedback** - Adjustable sound and vibration intensity
-- **Swipe Gestures** - Cursor movement, deletion, symbol input via swipe gestures
-- **Clipboard Manager** - Clipboard history with quick send and pinning
-- **Clipboard Sync** - Bidirectional clipboard sync with remote devices via plugins (WebDAV, ximed, etc.)
-- **Candidate Coding Hints** - Display Wubi codes for candidates to aid learning
-- **Radical Display** - Swipe down on keys to show Wubi radicals for memory aid
-- **Physical Keyboard Support** - Floating candidate bar when using hardware/bluetooth keyboards
-- **WebDAV Sync** - Backup and restore schemas and settings via WebDAV
-- **Plugin Marketplace** - Extensible Lua plugins (emoji, clipboard sync, online ASR, etc.) via the built-in marketplace
+### Key customization
+
+- Settings → Appearance → **Key customize**
+- Separate ZH / EN QWERTY: face labels (display only), swipe hints, long-press lists
+- Presets: Cangjie, Wubi 86, Zhuyin, A–Z upper/lower, etc.
+- **JSON import / export / share** (replace or merge)
+
+### Theme & launcher icon
+
+- Default **Material You** (`dynamic`) for new installs (Android 12+)
+- Launcher icon follows keyboard theme (system accent or hue palette); night variants
+
+### Toolbar
+
+- Alignment options; long-press drag reorder; scroll position remembered
+
+### Stickers & emoji
+
+- Favorites tab; album import / crop; GIF kept as-is
+- Manage in app; top-bar **import/export** (zip)
+- Favorites / plugin tabs: bottom-right **Settings** opens manage / plugin page
+- Image send fallbacks (share / clipboard)
+
+### Dictionaries
+
+- Schema packages vs personal `userdb` import separated
+- Personal dict export as zip; helper scripts for Mint / Fcitx conversion
+
+### Handwriting
+
+- Clear undoes committed handwriting text for the current stroke session
+
+---
+
+## Upstream features (summary)
+
+Inherited from [ximeiorg/Xime](https://github.com/ximeiorg/Xime): Wubi / Pinyin schemas, T9, handwriting, voice, plugins, clipboard sync, WebDAV backup, MD3 themes, floating keyboard, and more.
 
 ## Requirements
 
-- Android 9.0 (API 28) or later
+- Android 9.0 (API 28)+
 
-## Installation
+## Install
 
-### Download
+### This fork
 
-Choose the APK matching your device architecture:
-- **arm64-v8a**: Modern phones (recommended for most users)
-- **armeabi-v7a**: Older 32-bit phones
-- **x86_64**: Emulators
-- **universal**: All architectures (larger file size)
+1. Download from [HeavenGospel/Xime Releases](https://github.com/HeavenGospel/Xime/releases) (prefer **arm64-v8a**)
+2. Enable Xime in system IME settings
+3. Re-signing requires uninstalling the old build first
 
-### From Releases
+Upstream packages: [ximeiorg/Xime Releases](https://github.com/ximeiorg/Xime/releases) · [F-Droid](https://f-droid.org/packages/com.kingzcheung.xime)
 
-1. Download the latest APK from [Releases](https://github.com/ximeiorg/Xime/releases)
-2. Install the application
-3. Enable Xime in system input method settings
-4. Set Xime as the current input method
-
-### Plugins (Optional)
-
-Plugins are Lua-script plugins (`.xipk` format), installable and enabled from the app's Settings > Extension Store:
-- **kaomoji**: Kaomoji text emoticons
-- **meme-bunny**: Funny bunny sticker pack (8 stickers)
-- **xime-fluent-emoji**: Fluent UI 3D-style emoji plugin (222 curated 3D emojis, 9 categories)
-- **funasr-asr**: Alibaba Bailian FunAsr online speech recognition
-- **volc-asr**: Volcano Engine online speech recognition
-- **webdav-clipboard-sync**: WebDAV-based clipboard sync
-- **ximed-clipboard-sync**: ximed-service-based clipboard sync
-
-For the full plugin list, see the [Plugin Center](https://ime.ximei.me/plugin-list.html), or browse and install directly from the app's Settings > Extension Store.
-
-### Build from Source
-
-1. Clone the project and build the APK
-2. Install the application
-3. Enable Xime in system input method settings
-4. Set Xime as the current input method
-
-## Documentation
-
-For detailed documentation, visit [https://ime.ximei.me](https://ime.ximei.me).
-
-- [FAQ](https://ime.ximei.me/faq.html)
-- [Rime Schemas List](https://ime.ximei.me/rime-list.html)
-- [Plugin List](https://ime.ximei.me/plugin-list.html)
-- [AI Models List](https://ime.ximei.me/model-list.html)
-
-## Building
+### Build
 
 ```bash
-# Clone with submodules
-git clone --recursive https://github.com/ximeiorg/Xime.git
-
-# Or initialize submodules in an existing clone
-git submodule update --init --recursive
-
-# Build Release APK
+git clone --recursive https://github.com/HeavenGospel/Xime.git
+cd Xime
+# Optional: app/keystore.properties for release signing (do not commit)
 ./gradlew assembleRelease
 ```
 
-## Tech Stack
+## Docs
 
-- Kotlin
-- Jetpack Compose
-- Material Design 3
-- Rime (librime)
-- JNI (Native C++)
-
-## Contributing
-
-Contributions welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a PR.
-
-Core rules:
-- **File an Issue first** — All changes require a prior discussion via an Issue
-- **Minimal changes** — PRs must contain only the minimum changes needed
-- **GPG signing** — All commits must be GPG-signed
+- Fork changelog: [docs/changelog-2026-09-session.md](docs/changelog-2026-09-session.md)
+- Upstream: [https://ime.ximei.me](https://ime.ximei.me)
 
 ## Acknowledgments
 
-- [Rime](https://rime.im/) - Input method engine
-- [Trime](https://github.com/osfans/trime) - Configuration reference
-- [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android) - Keyboard layout reference
-- [onnxruntime](https://github.com/microsoft/onnxruntime) - ONNX inference runtime for predictive text and speech recognition models
+- **[ximeiorg/Xime](https://github.com/ximeiorg/Xime)** — [Kingz Cheung](https://github.com/kingzcheung) and upstream contributors
+- [Rime](https://rime.im/) · [Trime](https://github.com/osfans/trime) · [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android)
 
 ## License
 
-GPLv3 License
+**GPLv3**, same as upstream.
 
-Copyright © 2026 Kingz Cheung
+Copyright © 2026 Kingz Cheung (upstream). Fork modifications are also under GPLv3.
 
-The Xime name, logo and other brand assets are **not** covered by the GPLv3 license.
-See [TRADEMARKS.md](TRADEMARKS.md) for details.
+Brand assets: see upstream [TRADEMARKS.md](TRADEMARKS.md).
