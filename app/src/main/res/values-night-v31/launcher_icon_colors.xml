@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 夜间动态图标：深色强调容器 + 浅色字根 -->
+    <color name="ic_launcher_dynamic_bg">@android:color/system_accent1_800</color>
+    <color name="ic_launcher_dynamic_fg">@android:color/system_accent1_200</color>
+</resources>

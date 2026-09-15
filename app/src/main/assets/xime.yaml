@@ -20,8 +20,8 @@ style:
   # 浅色/深色模式的配色，deep 为降级后备
   # 可选值：内置主题 id、color_schemes 中定义的 id、或 dynamic（Material You 动态配色，随壁纸取色，仅 Android 12+ 生效）
   color_scheme:
-    light: lavender_purple
-    dark: slate_gray
+    light: dynamic
+    dark: dynamic
   # 显示模式：0=浅色, 1=深色, 2=跟随系统（默认）
   dark_mode: 2
 

@@ -20,6 +20,7 @@ import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.ui.keyboard.AppFonts
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
+import com.kingzcheung.xime.ui.theme.LauncherIconHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -112,6 +113,9 @@ class XimeApplication : Application(), ImageLoaderFactory {
         // 低版本 getThemeById 自动回退到内置配色）
         SettingsPreferences.defaultKeyboardTheme = KeysConfigHelper.loadDefaultThemeId(this)
         SettingsPreferences.defaultDarkMode = KeysConfigHelper.loadDefaultDarkMode(this)
+
+        // 启动器图标跟随当前键盘主题（动态 / 固定）
+        LauncherIconHelper.syncToCurrentTheme(this)
 
         // 初始化模型运行时（内存管理 + 生命周期）
         ModelRuntime.attach(this)

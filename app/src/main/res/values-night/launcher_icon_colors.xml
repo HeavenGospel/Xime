@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 夜间：深底 + 浅色字根（与日间浅底深字形成对比） -->
+    <color name="ic_launcher_dynamic_bg">#2B2148</color>
+    <color name="ic_launcher_dynamic_fg">#D0BCFF</color>
+
+    <color name="ic_launcher_palette_purple_bg">#2B2148</color>
+    <color name="ic_launcher_palette_purple_fg">#D0BCFF</color>
+
+    <color name="ic_launcher_palette_blue_bg">#0D1B33</color>
+    <color name="ic_launcher_palette_blue_fg">#A8C7FA</color>
+
+    <color name="ic_launcher_palette_orange_bg">#3D1800</color>
+    <color name="ic_launcher_palette_orange_fg">#FFB59A</color>
+
+    <color name="ic_launcher_palette_pink_bg">#3D1024</color>
+    <color name="ic_launcher_palette_pink_fg">#FFB0C8</color>
+
+    <color name="ic_launcher_palette_teal_bg">#003732</color>
+    <color name="ic_launcher_palette_teal_fg">#7BDBC9</color>
+
+    <color name="ic_launcher_palette_green_bg">#0D2818</color>
+    <color name="ic_launcher_palette_green_fg">#A6F2C0</color>
+
+    <color name="ic_launcher_palette_gray_bg">#1C1B1F</color>
+    <color name="ic_launcher_palette_gray_fg">#E6E1E5</color>
+
+    <color name="ic_launcher_palette_brown_bg">#2C1B12</color>
+    <color name="ic_launcher_palette_brown_fg">#E8C4B0</color>
+</resources>

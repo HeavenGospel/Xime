@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 动态主题图标：API 31+ 在 values-v31 覆盖为 system_accent；低版本用薰衣草紫兜底 -->
+    <color name="ic_launcher_dynamic_bg">#EADDFF</color>
+    <color name="ic_launcher_dynamic_fg">#4F378B</color>
+
+    <!-- 固定主题色相桶：浅底 + 深色字根，切换主题时桌面图标可见变色 -->
+    <color name="ic_launcher_palette_purple_bg">#EADDFF</color>
+    <color name="ic_launcher_palette_purple_fg">#4F378B</color>
+
+    <color name="ic_launcher_palette_blue_bg">#D3E3FD</color>
+    <color name="ic_launcher_palette_blue_fg">#0B57D0</color>
+
+    <color name="ic_launcher_palette_orange_bg">#FFDBCF</color>
+    <color name="ic_launcher_palette_orange_fg">#B3261E</color>
+
+    <color name="ic_launcher_palette_pink_bg">#FFD8E4</color>
+    <color name="ic_launcher_palette_pink_fg">#8C1D48</color>
+
+    <color name="ic_launcher_palette_teal_bg">#B3EBE0</color>
+    <color name="ic_launcher_palette_teal_fg">#006A60</color>
+
+    <color name="ic_launcher_palette_green_bg">#C4EED0</color>
+    <color name="ic_launcher_palette_green_fg">#0F6A30</color>
+
+    <color name="ic_launcher_palette_gray_bg">#E3E3E3</color>
+    <color name="ic_launcher_palette_gray_fg">#303030</color>
+
+    <color name="ic_launcher_palette_brown_bg">#F0E0D6</color>
+    <color name="ic_launcher_palette_brown_fg">#5D4037</color>
+</resources>

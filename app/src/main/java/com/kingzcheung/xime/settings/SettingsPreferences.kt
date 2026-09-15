@@ -37,7 +37,7 @@ object SettingsPreferences {
     
     /** 默认主题 ID，可从 xime.yaml 的 style.color_scheme 初始化。 */
     @JvmStatic
-    var defaultKeyboardTheme: String = "lavender_purple"
+    var defaultKeyboardTheme: String = "dynamic"
 
     /** 默认显示模式，可从 xime.yaml 的 style.dark_mode 初始化。 */
     @JvmStatic
@@ -361,6 +361,7 @@ object SettingsPreferences {
     
     fun setKeyboardTheme(context: Context, themeId: String) {
         getPrefs(context).edit().putString(KEY_KEYBOARD_THEME, themeId).apply()
+        com.kingzcheung.xime.ui.theme.LauncherIconHelper.sync(context, themeId)
     }
 
     
