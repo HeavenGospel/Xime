@@ -139,7 +139,71 @@
 
 ---
 
-## 十、建议后续提交拆分（未提交工作区）
+## 十、2.8.3（2026-09-15）
+
+版本：`versionName 2.8.3` / `versionCode 20260915`
+
+### 10.1 按键自定义
+
+| 项 | 说明 |
+|----|------|
+| 入口 | 设置 → 外观与交互 → **按键自定义** |
+| 能力 | 中/英全键分开；改键面字根（仅显示）、上滑/下滑、长按（逗号分隔） |
+| 预设 | 仓颉、五笔86、注音、英文字母大写/小写等 |
+| 导入/导出 | JSON（`format: xime-key-customize`），支持覆盖 / 合并 |
+| 持久化 | Prefs 覆盖层，优先于 `xime.custom.yaml`；保存后热重载 |
+
+**相关文件**：`KeyCustomizeStore.kt`、`KeyCustomizeSettingsScreen.kt`、`KeysConfigHelper.kt`
+
+### 10.2 默认动态配色
+
+- `xime.yaml`：`style.color_scheme.light/dark` 改为 `dynamic`（Material You，Android 12+）。
+- 新安装默认走动态配色；已保存过主题的用户 prefs 不变。
+
+### 10.3 启动图标跟随主题
+
+| 场景 | 行为 |
+|------|------|
+| 动态配色 | 图标底/前景用 `system_accent` 着色（不依赖桌面「主题图标」开关） |
+| 固定主题 | 按强调色色相切换紫/蓝/橙/粉/青/绿/灰/棕 alias |
+| 夜间 | `values-night` 深底 + 浅色字根；动态主题用 `accent1_800/200` |
+| 切换 | 改键盘主题或 App 启动时 `LauncherIconHelper.sync` |
+
+**注意**：切换 alias 时须先成功启用目标入口，避免桌面图标失效（曾导致点开进系统设置）。
+
+**相关文件**：`LauncherIconHelper.kt`、`AndroidManifest.xml`（`LauncherDynamic` + 色相 alias）、`res/values*/launcher_icon_colors.xml`
+
+### 10.4 收藏表情增强
+
+| 项 | 说明 |
+|----|------|
+| 管理页 | 顶栏 **导入/导出** → 弹窗：导出文件 / 分享 / 从文件导入 |
+| 包格式 | zip + `index.json`（`format: xime-favorite-stickers`），含 GIF/WebP |
+| 表情面板 | **收藏** / **插件** Tab 右下角 **设置**（原删除位）：收藏 → 管理页；插件 → 插件管理（可深链到该插件配置） |
+| 内置 Emoji | 仍显示 **删除** |
+
+**相关文件**：`FavoriteStickersStore.kt`、`FavoriteStickersSettingsScreen.kt`、`EmojiKeyboardLayout.kt`、`MainActivity.buildOpenSettingsIntent`
+
+### 10.5 构建
+
+- Release 签名：`app/keystore.properties`（本地，勿提交）。
+- 产物示例：`build/Xime-2.8.3-arm64-v8a.apk`、`build/Xime-2.8.3-universal.apk`。
+
+### 10.6 建议 git 提交拆分
+
+1. `feat(settings): 按键自定义与 JSON 导入导出`
+2. `feat(theme): 默认动态配色`
+3. `feat(launcher): 启动图标跟随主题与夜间变体`
+4. `feat(stickers): 收藏表情 zip 导入导出与面板设置跳转`
+5. `feat(settings): 设置导航与 IME 深链`
+6. `chore(release): bump version to 2.8.3`
+7. `docs: 更新 2026-09 会话变更记录`
+
+**勿提交**：`app/src/main/assets/rime`、`app/src/main/jni/librime-lua-deps` 子模块本地脏改。
+
+---
+
+## 十一、建议后续提交拆分（未提交工作区 · 历史）
 
 便于 review，可按主题拆 commit，例如：
 
@@ -154,9 +218,10 @@
 
 ---
 
-## 十一、时间线（简）
+## 十二、时间线（简）
 
 ```
+09-15  2.8.3：按键自定义、默认动态配色、启动图标、收藏表情导入导出、表情面板设置
 09-13  滑动移光标震动/灵敏度/误触 → 提交 6cb89e3c
        手写清除撤销上屏
        表情插件可见性、发图分享/剪贴板开关
