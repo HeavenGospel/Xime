@@ -13,6 +13,7 @@ object SettingsRoutes {
     const val Theme = "theme"
     const val KeyEffect = "key_effect"
     const val LayoutDisplay = "layout_display"
+    const val KeyCustomize = "key_customize"
     const val FavoriteStickers = "favorite_stickers"
     const val Dictionary = "dictionary"
     const val Plugins = "plugins"

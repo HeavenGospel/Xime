@@ -12,18 +12,27 @@ import androidx.navigation.navArgument
 fun SettingsScreen(
     initialRoute: String? = null,
     initialPluginId: String? = null,
+    initialPluginManageId: String? = null,
     onThemeChanged: () -> Unit = {},
     onWizardBack: () -> Unit = {}
 ) {
     val navController = rememberNavController()
-    val startDestination = if (initialRoute == "manage_dict") SettingsRoutes.Dictionary
-    else if (initialRoute == "schema") SettingsRoutes.Schema
-    else if (initialRoute == "plugins") SettingsRoutes.Plugins
-    else SettingsRoutes.Main
+    val startDestination = when (initialRoute) {
+        "manage_dict" -> SettingsRoutes.Dictionary
+        "schema" -> SettingsRoutes.Schema
+        "plugins" -> SettingsRoutes.Plugins
+        "favorite_stickers" -> SettingsRoutes.FavoriteStickers
+        else -> SettingsRoutes.Main
+    }
 
-    LaunchedEffect(initialPluginId) {
-        if (initialPluginId != null) {
-            navController.navigate("plugin_market_detail/$initialPluginId")
+    LaunchedEffect(initialPluginId, initialPluginManageId) {
+        when {
+            initialPluginManageId != null -> {
+                navController.navigate("${SettingsRoutes.PluginSettings}/$initialPluginManageId")
+            }
+            initialPluginId != null -> {
+                navController.navigate("plugin_market_detail/$initialPluginId")
+            }
         }
     }
     
@@ -38,6 +47,7 @@ fun SettingsScreen(
                 onNavigateToTheme = { navController.navigate(SettingsRoutes.Theme) },
                 onNavigateToKeyEffect = { navController.navigate(SettingsRoutes.KeyEffect) },
                 onNavigateToLayoutDisplay = { navController.navigate(SettingsRoutes.LayoutDisplay) },
+                onNavigateToKeyCustomize = { navController.navigate(SettingsRoutes.KeyCustomize) },
                 onNavigateToFavoriteStickers = { navController.navigate(SettingsRoutes.FavoriteStickers) },
                 onNavigateToDictionary = { navController.navigate(SettingsRoutes.Dictionary) },
                 onNavigateToPlugins = { navController.navigate(SettingsRoutes.Plugins) },
@@ -160,6 +170,11 @@ fun SettingsScreen(
             LayoutDisplaySettingsContent(
                 onBack = { navController.popBackStack() },
                 onNavigateToFavoriteStickers = { navController.navigate(SettingsRoutes.FavoriteStickers) }
+            )
+        }
+        composable(SettingsRoutes.KeyCustomize) {
+            KeyCustomizeSettingsContent(
+                onBack = { navController.popBackStack() }
             )
         }
         composable(SettingsRoutes.FavoriteStickers) {

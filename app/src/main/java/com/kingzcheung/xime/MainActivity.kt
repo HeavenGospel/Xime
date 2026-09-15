@@ -63,6 +63,23 @@ class MainActivity : ComponentActivity() {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
         }
+
+        /**
+         * 从输入法等场景打开设置子页。
+         * @param route [SettingsScreen] 的 initialRoute，如 favorite_stickers / plugins
+         * @param pluginManageId 打开插件管理后直达某插件配置（可选）
+         */
+        fun buildOpenSettingsIntent(
+            context: android.content.Context,
+            route: String,
+            pluginManageId: String? = null,
+        ): Intent {
+            return Intent(context, MainActivity::class.java).apply {
+                putExtra("open_fragment", route)
+                pluginManageId?.let { putExtra("open_plugin_manage_id", it) }
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -117,6 +134,7 @@ class MainActivity : ComponentActivity() {
         
         val openFragment = intent?.getStringExtra("open_fragment")
         val openPluginId = intent?.getStringExtra("open_plugin_id")
+        val openPluginManageId = intent?.getStringExtra("open_plugin_manage_id")
 
         setContent {
             val context = this
@@ -175,6 +193,7 @@ class MainActivity : ComponentActivity() {
                         SettingsScreen(
                             initialRoute = openFragment,
                             initialPluginId = openPluginId,
+                            initialPluginManageId = openPluginManageId,
                             onThemeChanged = {
                                 darkMode = SettingsPreferences.getDarkMode(context)
                                 keyboardTheme = SettingsPreferences.getKeyboardTheme(context)
