@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
+    <!-- 仅暴露明确分享用途的子目录，禁止 filesDir 根路径通配 -->
     <cache-path name="emoji_cache" path="emoji_cache/" />
-    <files-path name="files" path="." />
+    <files-path name="share" path="share/" />
+    <files-path name="logs" path="logs/" />
 </paths>

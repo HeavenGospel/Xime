@@ -231,8 +231,12 @@ object XimeIndexSource {
             tmpFile.delete()
         }
         when (install) {
-            is com.kingzcheung.xime.plugin.core.runtime.installer.InstallerManager.InstallResult.Success ->
+            is com.kingzcheung.xime.plugin.core.runtime.installer.InstallerManager.InstallResult.Success -> {
+                if (install.wasOverwrite) {
+                    SettingsPreferences.clearPluginNetworkAuth(context, install.pluginInfo.id)
+                }
                 InstallResult(success = true, sha256Status = if (dl.sha256.isNullOrBlank()) null else true)
+            }
             is com.kingzcheung.xime.plugin.core.runtime.installer.InstallerManager.InstallResult.Failure ->
                 InstallResult(false, failureReason = install.reason)
         }

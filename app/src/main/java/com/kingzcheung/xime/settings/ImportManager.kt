@@ -31,7 +31,10 @@ object ImportManager {
         data class UserDict(val result: UserDictImporter.Result) : ImportResult()
 
         /** 插件（.xipk）安装结果。 */
-        data class Plugin(val pluginInfo: PluginInfo?) : ImportResult()
+        data class Plugin(
+            val pluginInfo: PluginInfo?,
+            val wasOverwrite: Boolean = false,
+        ) : ImportResult()
 
         data class Failed(val reason: String) : ImportResult()
         data class Unsupported(val fileName: String) : ImportResult()
@@ -48,12 +51,10 @@ object ImportManager {
         val name = SchemaManager.sanitizeDisplayName(displayName)
 
         when {
-            isPluginFile(name) -> {
-                when (val r = PluginManager.installerManager.installPluginFromUri(uri)) {
-                    is InstallerManager.InstallResult.Success -> ImportResult.Plugin(r.pluginInfo)
-                    is InstallerManager.InstallResult.Failure -> ImportResult.Failed(r.reason)
-                }
-            }
+            isPluginFile(name) -> installPluginResult(
+                context,
+                PluginManager.installerManager.installPluginFromUri(uri),
+            )
             UserDictImporter.isUserDbFileName(name) ->
                 ImportResult.UserDict(UserDictImporter.importUri(context, uri))
             name.endsWith(".zip", ignoreCase = true) -> {
@@ -105,12 +106,14 @@ object ImportManager {
         val safe = SchemaManager.sanitizeDisplayName(name)
 
         when {
-            isPluginFile(safe) -> {
-                when (val r = PluginManager.installerManager.installPlugin(file, source = PluginSource.FILE)) {
-                    is InstallerManager.InstallResult.Success -> ImportResult.Plugin(r.pluginInfo)
-                    is InstallerManager.InstallResult.Failure -> ImportResult.Failed(r.reason)
-                }
-            }
+            isPluginFile(safe) -> installPluginResult(
+                context,
+                PluginManager.installerManager.installPlugin(
+                    file,
+                    forceOverwrite = true,
+                    source = PluginSource.FILE,
+                ),
+            )
             UserDictImporter.isUserDbFileName(safe) ->
                 ImportResult.UserDict(UserDictImporter.importUri(context, Uri.fromFile(file)))
             safe.endsWith(".zip", ignoreCase = true) && zipFileLooksLikeUserDictOnly(file) ->
@@ -120,6 +123,19 @@ object ImportManager {
                 ImportResult.Content(r.success, r.installedDirect)
             }
         }
+    }
+
+    private fun installPluginResult(
+        context: Context,
+        r: InstallerManager.InstallResult,
+    ): ImportResult = when (r) {
+        is InstallerManager.InstallResult.Success -> {
+            if (r.wasOverwrite) {
+                SettingsPreferences.clearPluginNetworkAuth(context, r.pluginInfo.id)
+            }
+            ImportResult.Plugin(r.pluginInfo, wasOverwrite = r.wasOverwrite)
+        }
+        is InstallerManager.InstallResult.Failure -> ImportResult.Failed(r.reason)
     }
 
     private fun zipFileLooksLikeUserDictOnly(file: File): Boolean {

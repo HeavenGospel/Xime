@@ -144,13 +144,13 @@ fun WirelessImportSheet(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "电脑浏览器打开上方网址，或在手机浏览器输入",
+                    text = "请用本页二维码或完整链接打开（含一次性口令）。关闭本页后口令失效。勿转发链接。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
                 )
                 Text(
-                    text = "拖拽输入方案或插件文件到页面上传",
+                    text = "拖拽输入方案或插件文件到页面上传；新插件默认关闭。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center

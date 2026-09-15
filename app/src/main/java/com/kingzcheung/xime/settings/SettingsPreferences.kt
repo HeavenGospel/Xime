@@ -523,6 +523,14 @@ object SettingsPreferences {
     fun clearPluginPendingHosts(context: Context, pluginId: String) {
         getPrefs(context).edit().putString("plugin_net_pending_$pluginId", "").apply()
     }
+
+    /** 覆盖安装后清除该插件全部网络授权与待授权记录。 */
+    fun clearPluginNetworkAuth(context: Context, pluginId: String) {
+        getPrefs(context).edit()
+            .remove("plugin_net_auth_$pluginId")
+            .remove("plugin_net_pending_$pluginId")
+            .apply()
+    }
     
     fun isSwipeUpHintsEnabled(context: Context): Boolean {
         return getPrefs(context).getBoolean(KEY_SWIPE_UP_HINTS_ENABLED, true)

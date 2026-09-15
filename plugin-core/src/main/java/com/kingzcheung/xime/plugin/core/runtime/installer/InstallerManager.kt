@@ -284,7 +284,11 @@ class InstallerManager(
     }
 
     sealed class InstallResult {
-        data class Success(val pluginInfo: PluginInfo) : InstallResult()
+        data class Success(
+            val pluginInfo: PluginInfo,
+            /** 是否覆盖了已安装同 id 插件（含强制重装解压）。 */
+            val wasOverwrite: Boolean = false,
+        ) : InstallResult()
         data class Failure(val reason: String, val exception: Throwable? = null) : InstallResult()
     }
 
@@ -344,7 +348,7 @@ class InstallerManager(
 
         // Lua 插件无版本号概念：只有首次安装或强制覆盖才重新解压
         if (!forceOverwrite && existingPlugin != null) {
-            return@withContext InstallResult.Success(existingPlugin)
+            return@withContext InstallResult.Success(existingPlugin, wasOverwrite = false)
         }
 
         if (pluginDir.exists()) {
@@ -359,6 +363,8 @@ class InstallerManager(
                 throw IllegalArgumentException("Lua 入口脚本不存在: $entryScript")
             }
 
+            // 内置 ASSET 可默认启用；外部/市场/文件安装默认禁用，需用户在插件管理中开启
+            val defaultEnabled = source == PluginSource.ASSET
             val pluginInfo = PluginInfo(
                 id = pluginConfig.id,
                 name = pluginConfig.name,
@@ -368,7 +374,7 @@ class InstallerManager(
                 versionName = pluginConfig.version,
                 path = entryFile.absolutePath,
                 type = pluginConfig.type,
-                enabled = existingPlugin?.enabled ?: true,
+                enabled = existingPlugin?.enabled ?: defaultEnabled,
                 installTime = existingPlugin?.installTime ?: System.currentTimeMillis(),
                 source = source,
                 minHostVersion = pluginConfig.minHostVersion,
@@ -389,7 +395,7 @@ class InstallerManager(
             }
             xmlManager.flushToDisk()
 
-            InstallResult.Success(pluginInfo)
+            InstallResult.Success(pluginInfo, wasOverwrite = existingPlugin != null)
         } catch (e: Exception) {
             pluginDir.deleteRecursively()
             InstallResult.Failure("插件安装失败: ${e.message}", e)

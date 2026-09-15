@@ -10,6 +10,7 @@ import com.google.zxing.qrcode.QRCodeWriter
 import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.Cookie
 import io.ktor.server.application.*
 import io.ktor.server.cio.*
 import io.ktor.server.engine.*
@@ -17,9 +18,9 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.utils.io.*
-import io.ktor.utils.io.jvm.javaio.*
 import kotlinx.coroutines.channels.Channel
 import java.io.File
+import java.security.SecureRandom
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.serialization.Serializable
@@ -50,6 +51,8 @@ private val configJson: Json = Json { ignoreUnknownKeys = true }
 
 class WirelessImportHelper(private val context: Context) {
     private var server: EmbeddedServer<*, *>? = null
+    /** 本次会话一次性 token；关闭服务后失效。 */
+    private var sessionToken: String? = null
 
     private val _uploadResults = Channel<UploadResult>(Channel.BUFFERED)
     val uploadResults: Flow<UploadResult> = _uploadResults.receiveAsFlow()
@@ -89,9 +92,33 @@ class WirelessImportHelper(private val context: Context) {
     fun start(port: Int): String? {
         if (server != null) return null
         val ip = getLocalIpAddress() ?: return null
-        val url = "http://$ip:$port"
+        val token = generateToken()
+        sessionToken = token
+        // 二维码 / 展示 URL 带一次性 token；首访写 Cookie，后续同 origin fetch 自动携带
+        val url = "http://$ip:$port/?t=$token"
 
         server = embeddedServer(CIO, port = port) {
+            intercept(ApplicationCallPipeline.Plugins) {
+                val path = call.request.path()
+                // 仅放行带鉴权的页面与 API；无 token 一律 401
+                if (!authorize(call, token)) {
+                    call.respond(HttpStatusCode.Unauthorized, "Unauthorized")
+                    finish()
+                    return@intercept
+                }
+                // 带 query token 访问根路径时写入会话 Cookie，供前端后续 /upload 等请求使用
+                if (path == "/" && call.request.queryParameters["t"] == token) {
+                    call.response.cookies.append(
+                        Cookie(
+                            name = COOKIE_NAME,
+                            value = token,
+                            path = "/",
+                            httpOnly = true,
+                            extensions = mapOf("SameSite" to "Strict"),
+                        )
+                    )
+                }
+            }
             routing {
                 // React 前端：index.html 与静态资源打包在 assets/www/
                 get("/") {
@@ -105,7 +132,7 @@ class WirelessImportHelper(private val context: Context) {
                     }
                     serveAsset(call, "www/assets/$file")
                 }
-                // 返回 app 数据目录树（filesDir 下递归），供前端右侧展示
+                // 返回 app 数据目录树（需会话 token；仅局域网临时开放）
                 get("/tree") {
                     val root = context.filesDir
                     if (root == null) {
@@ -115,34 +142,7 @@ class WirelessImportHelper(private val context: Context) {
                         call.respondText(json, ContentType.Application.Json)
                     }
                 }
-                // 读取文本文件内容（前端查看文件用）
-                get("/read") {
-                    val path = call.request.queryParameters["path"]
-                    val f = safeResolve(path)
-                    if (f == null || !f.isFile) {
-                        call.respondText("""{"error":"File not found"}""",
-                            ContentType.Application.Json, HttpStatusCode.NotFound)
-                    } else {
-                        val text = f.readBytes().toString(Charsets.UTF_8)
-                        call.respondText(text, ContentType.Text.Plain, HttpStatusCode.OK)
-                    }
-                }
-                // 下载文件（流式，避免大文件 OOM）
-                get("/download") {
-                    val path = call.request.queryParameters["path"]
-                    val f = safeResolve(path)
-                    if (f == null || !f.isFile) {
-                        call.respondText("""{"error":"File not found"}""",
-                            ContentType.Application.Json, HttpStatusCode.NotFound)
-                    } else {
-                        call.response.header(
-                            io.ktor.http.HttpHeaders.ContentDisposition,
-                            "attachment; filename=\"${f.name}\""
-                        )
-                        call.respondFile(f)
-                    }
-                }
-                // 删除文件或空目录
+                // 删除文件或空目录（需会话 token）
                 post("/delete") {
                     val path = call.receiveText()
                     val p = try {
@@ -285,15 +285,37 @@ class WirelessImportHelper(private val context: Context) {
             }
         }.start(wait = false)
 
-        Log.i(TAG, "Server started at $url")
+        Log.i(TAG, "Server started at $url (token session)")
         return url
     }
 
     fun stop() {
         server?.stop(1000, 2000)
         server = null
+        sessionToken = null
         Log.i(TAG, "Server stopped")
     }
+
+    /** 校验 query / header / cookie 中的会话 token。 */
+    private fun authorize(call: ApplicationCall, expected: String): Boolean {
+        val q = call.request.queryParameters["t"]
+            ?: call.request.queryParameters["token"]
+        if (q != null && q == expected) return true
+        val auth = call.request.headers["Authorization"]
+        if (auth != null) {
+            val bearer = auth.removePrefix("Bearer ").trim()
+            if (bearer == expected) return true
+        }
+        val cookie = call.request.cookies[COOKIE_NAME]
+        return cookie != null && cookie == expected
+    }
+
+    private fun generateToken(): String {
+        val bytes = ByteArray(24)
+        SecureRandom().nextBytes(bytes)
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
     /** 从 app assets 读取静态文件并响应，避免把前端源码硬编码进 Kotlin。 */
     private suspend fun serveAsset(call: ApplicationCall, assetPath: String) {
         val mime = when {
@@ -315,22 +337,23 @@ class WirelessImportHelper(private val context: Context) {
     private fun safeResolve(rawPath: String?): File? {
         if (rawPath.isNullOrBlank()) return null
         val root = context.filesDir ?: return null
-        val normalized = rawPath.replace('\\', '/')
-        val candidate = File(normalized).canonicalFile
         val rootCanonical = root.canonicalFile
-        return if (candidate.canonicalPath.startsWith(rootCanonical.canonicalPath)) {
-            candidate
-        } else {
-            // 回退：按相对 filesDir 解析
-            val rel = normalized.trimStart('/')
-            if (rel.split('/').any { it == ".." }) return null
-            val c2 = File(root, rel).canonicalFile
-            if (c2.canonicalPath.startsWith(rootCanonical.canonicalPath)) c2 else null
+        val rootPath = rootCanonical.canonicalPath
+        fun underRoot(candidate: File): File? {
+            val c = candidate.canonicalFile
+            val p = c.canonicalPath
+            return if (p == rootPath || p.startsWith(rootPath + File.separator)) c else null
         }
+        val normalized = rawPath.replace('\\', '/')
+        underRoot(File(normalized))?.let { return it }
+        val rel = normalized.trimStart('/')
+        if (rel.split('/').any { it == ".." }) return null
+        return underRoot(File(root, rel))
     }
 
     /** 递归构建数据目录树。 */
-    private fun buildNode(file: File): FileNode {        if (!file.isDirectory) {
+    private fun buildNode(file: File): FileNode {
+        if (!file.isDirectory) {
             return FileNode(
                 name = file.name,
                 path = file.path,
@@ -420,5 +443,6 @@ class WirelessImportHelper(private val context: Context) {
 
     companion object {
         private const val TAG = "WirelessImport"
+        private const val COOKIE_NAME = "xime_wi"
     }
 }

@@ -248,43 +248,82 @@ class MainActivity : ComponentActivity() {
     
     private fun importSchema(uri: android.net.Uri) {
         prewarmScope.launch {
-            when (val result = ImportManager.import(this@MainActivity, uri)) {
-                is ImportManager.ImportResult.Content -> {
-                    launch(Dispatchers.Main) {
-                        val msg = when {
-                            !result.success -> "导入失败"
-                            result.installedDirect -> "导入成功，已放入 rime 目录"
-                            else -> "方案导入成功，请到「输入方案」页面部署"
+            val displayName = withContext(Dispatchers.IO) {
+                try {
+                    contentResolver.query(
+                        uri,
+                        arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                        null, null, null
+                    )?.use { c ->
+                        if (c.moveToFirst()) c.getString(0) else null
+                    }
+                } catch (_: Exception) {
+                    null
+                } ?: uri.lastPathSegment
+            }
+            val name = SchemaManager.sanitizeDisplayName(displayName ?: "")
+            if (ImportManager.isPluginFile(name)) {
+                withContext(Dispatchers.Main) {
+                    android.app.AlertDialog.Builder(this@MainActivity)
+                        .setTitle("安装插件？")
+                        .setMessage(
+                            "「$name」将安装到本机。新插件默认关闭，覆盖安装会清除该插件的网络授权。" +
+                                "请确认来源可信后再继续。"
+                        )
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .setPositiveButton("安装") { _, _ ->
+                            prewarmScope.launch { runImport(uri) }
                         }
-                        Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
-                    }
+                        .show()
                 }
-                is ImportManager.ImportResult.UserDict -> {
-                    launch(Dispatchers.Main) {
-                        val msg = if (result.result.success) result.result.message
-                        else "个人词库导入失败：${result.result.message}"
-                        Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+            } else {
+                runImport(uri)
+            }
+        }
+    }
+
+    private suspend fun runImport(uri: android.net.Uri) {
+        when (val result = ImportManager.import(this@MainActivity, uri)) {
+            is ImportManager.ImportResult.Content -> {
+                withContext(Dispatchers.Main) {
+                    val msg = when {
+                        !result.success -> "导入失败"
+                        result.installedDirect -> "导入成功，已放入 rime 目录"
+                        else -> "方案导入成功，请到「输入方案」页面部署"
                     }
+                    Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
                 }
-                is ImportManager.ImportResult.Plugin -> {
-                    com.kingzcheung.xime.plugin.core.runtime.PluginManager.loadEnabledPlugins()
-                    launch(Dispatchers.Main) {
-                        Toast.makeText(
-                            this@MainActivity,
-                            "插件「${result.pluginInfo?.name}」安装成功",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
+            }
+            is ImportManager.ImportResult.UserDict -> {
+                withContext(Dispatchers.Main) {
+                    val msg = if (result.result.success) result.result.message
+                    else "个人词库导入失败：${result.result.message}"
+                    Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
                 }
-                is ImportManager.ImportResult.Failed -> {
-                    launch(Dispatchers.Main) {
-                        Toast.makeText(this@MainActivity, "导入失败：${result.reason}", Toast.LENGTH_LONG).show()
+            }
+            is ImportManager.ImportResult.Plugin -> {
+                com.kingzcheung.xime.plugin.core.runtime.PluginManager.loadEnabledPlugins()
+                withContext(Dispatchers.Main) {
+                    val info = result.pluginInfo
+                    val msg = when {
+                        info == null -> "插件安装失败"
+                        !info.enabled ->
+                            "插件「${info.name}」已安装（未启用），请到「插件管理」中开启"
+                        result.wasOverwrite ->
+                            "插件「${info.name}」已覆盖安装"
+                        else -> "插件「${info.name}」安装成功"
                     }
+                    Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
                 }
-                is ImportManager.ImportResult.Unsupported -> {
-                    launch(Dispatchers.Main) {
-                        Toast.makeText(this@MainActivity, "不支持的文件类型", Toast.LENGTH_LONG).show()
-                    }
+            }
+            is ImportManager.ImportResult.Failed -> {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "导入失败：${result.reason}", Toast.LENGTH_LONG).show()
+                }
+            }
+            is ImportManager.ImportResult.Unsupported -> {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "不支持的文件类型", Toast.LENGTH_LONG).show()
                 }
             }
         }
