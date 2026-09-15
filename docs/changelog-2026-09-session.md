@@ -218,10 +218,24 @@
 
 ---
 
-## 十二、时间线（简）
+## 十二、安全加固（2.8.4）
+
+| 项 | 说明 |
+|----|------|
+| 插件安装 | 外部/市场默认禁用；覆盖安装清除网络授权；系统分享 `.xipk` 需确认 |
+| 无线导入 | 一次性 `?t=` token + Cookie；无鉴权 401；移除未鉴权 `/read`/`/download` |
+| FileProvider | 仅 `emoji_cache/`、`share/`、`logs/`，不再暴露整个 `filesDir` |
+| 明文流量 | 默认禁止 cleartext（仅 localhost / 127.0.0.1） |
+
+**相关文件**：`InstallerManager.kt`、`ImportManager.kt`、`MainActivity.kt`、`WirelessImportHelper.kt`、`filepaths.xml`、`network_security_config.xml`
+
+---
+
+## 十三、时间线（简）
 
 ```
-09-15  2.8.3：按键自定义、默认动态配色、启动图标、收藏表情导入导出、表情面板设置
+09-15  2.8.4：安全加固（插件确认/禁用、无线 token、FileProvider、禁 cleartext）
+       2.8.3：按键自定义、默认动态配色、启动图标、收藏表情导入导出、表情面板设置
 09-13  滑动移光标震动/灵敏度/误触 → 提交 6cb89e3c
        手写清除撤销上屏
        表情插件可见性、发图分享/剪贴板开关
