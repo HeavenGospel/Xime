@@ -5,7 +5,7 @@
 <h1 align="center">Xime（曦碼） - 五筆/拼音輸入法</h1>
 
 <p align="center">
-  <a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a>
+  <a href="README.en.md">English</a> · <a href="README.md">简体中文</a>
 </p>
 
 [<img src="https://f-droid.org/badge/get-it-on.png"
