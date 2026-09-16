@@ -234,8 +234,8 @@ fun KeyButton(
                             currentOnRelease?.invoke()
                             dragOffsetX = 0f
                             dragOffsetY = 0f
-                            hasTriggeredSwipeUp = false
-                            hasTriggeredSwipeDown = false
+                            // 勿在此清 hasTriggered*：同一次触摸还有 awaitEachGesture/onTap
+                            // 可能稍后读到；清早了会补发字母单击（旧机时序更易踩中）。
                             isSwiping = false
                             isSwipeDown = false
                             longPressActivated = false
@@ -247,8 +247,6 @@ fun KeyButton(
                             currentOnRelease?.invoke()
                             dragOffsetX = 0f
                             dragOffsetY = 0f
-                            hasTriggeredSwipeUp = false
-                            hasTriggeredSwipeDown = false
                             isSwiping = false
                             isSwipeDown = false
                             dragActivated = false
@@ -267,9 +265,15 @@ fun KeyButton(
                                         onSwipeStateChange?.invoke(SwipeState(shouldShowBubble, swipeText, false))
                                     }
                                     
-                                    if (dragOffsetY < swipeUpThreshold && !hasTriggeredSwipeUp && swipeText != null && onSwipe != null) {
-                                        hasTriggeredSwipeUp = true
-                                        onSwipe(swipeText)
+                                    // 有回调则提交；仅有展示文案（如 action:none）也吞单击，避免松手进拼音。
+                                    if (dragOffsetY < swipeUpThreshold && !hasTriggeredSwipeUp) {
+                                        when {
+                                            onSwipe != null -> {
+                                                hasTriggeredSwipeUp = true
+                                                onSwipe.invoke(swipeText ?: "")
+                                            }
+                                            swipeText != null -> hasTriggeredSwipeUp = true
+                                        }
                                     }
                                 }
                             } else if (dragOffsetY > 0) {
@@ -281,9 +285,14 @@ fun KeyButton(
                                         onSwipeStateChange?.invoke(SwipeState(shouldShowBubble, swipeDownText, true))
                                     }
                                     
-                                    if (dragOffsetY > swipeDownThreshold && !hasTriggeredSwipeDown && swipeDownText != null && onSwipeDown != null) {
-                                        hasTriggeredSwipeDown = true
-                                        onSwipeDown(swipeDownText)
+                                    if (dragOffsetY > swipeDownThreshold && !hasTriggeredSwipeDown) {
+                                        when {
+                                            onSwipeDown != null -> {
+                                                hasTriggeredSwipeDown = true
+                                                onSwipeDown(swipeDownText ?: "")
+                                            }
+                                            swipeDownText != null -> hasTriggeredSwipeDown = true
+                                        }
                                     }
                                 }
                             }
@@ -521,8 +530,8 @@ fun SwipeableKeyButton(
                         currentOnRelease?.invoke()
                         dragOffsetX = 0f
                         dragOffsetY = 0f
-                        hasTriggeredSwipeUp = false
-                        hasTriggeredSwipeDown = false
+                        // 勿在此清 hasTriggered*：awaitEachGesture 抬手可能稍后执行，
+                        // 若此处已清且 dragActivated 已 false，会补发字母进拼音。
                         isSwiping = false
                         isSwipeDown = false
                         dragActivated = false
@@ -534,8 +543,6 @@ fun SwipeableKeyButton(
                         currentOnRelease?.invoke()
                         dragOffsetX = 0f
                         dragOffsetY = 0f
-                        hasTriggeredSwipeUp = false
-                        hasTriggeredSwipeDown = false
                         isSwiping = false
                         isSwipeDown = false
                         dragActivated = false
@@ -562,9 +569,15 @@ fun SwipeableKeyButton(
                                 
                                 val swipeTextValue = currentSwipeText
                                 val onSwipeValue = currentOnSwipe
-                                if (dragOffsetY < swipeUpThreshold && !hasTriggeredSwipeUp && swipeTextValue != null && onSwipeValue != null) {
-                                    hasTriggeredSwipeUp = true
-                                    onSwipeValue(swipeTextValue)
+                                // 有回调则提交（提示关时文案可为 null）；仅展示文案也吞单击。
+                                if (dragOffsetY < swipeUpThreshold && !hasTriggeredSwipeUp) {
+                                    when {
+                                        onSwipeValue != null -> {
+                                            hasTriggeredSwipeUp = true
+                                            onSwipeValue.invoke(swipeTextValue ?: "")
+                                        }
+                                        swipeTextValue != null -> hasTriggeredSwipeUp = true
+                                    }
                                 }
                             }
                         } else if (dragOffsetY > 0) {
@@ -578,9 +591,14 @@ fun SwipeableKeyButton(
                                 
                                 val swipeDownTextValue = currentSwipeDownText
                                 val onSwipeDownValue = currentOnSwipeDown
-                                if (dragOffsetY > swipeDownThreshold && !hasTriggeredSwipeDown && onSwipeDownValue != null) {
-                                    hasTriggeredSwipeDown = true
-                                    onSwipeDownValue(swipeDownTextValue ?: "")
+                                if (dragOffsetY > swipeDownThreshold && !hasTriggeredSwipeDown) {
+                                    when {
+                                        onSwipeDownValue != null -> {
+                                            hasTriggeredSwipeDown = true
+                                            onSwipeDownValue.invoke(swipeDownTextValue ?: "")
+                                        }
+                                        swipeDownTextValue != null -> hasTriggeredSwipeDown = true
+                                    }
                                 }
                             }
                         }
@@ -702,11 +720,19 @@ fun SwipeableKeyButton(
                                     if (selected != null) {
                                         currentOnLongPressSelect?.invoke(selected)
                                     }
-                                } else if (!dragActivated && !cursorMoveActive.value && !cancelClickDueToCursorMove) {
+                                } else if (
+                                    !dragActivated &&
+                                    !hasTriggeredSwipeUp &&
+                                    !hasTriggeredSwipeDown &&
+                                    !cursorMoveActive.value &&
+                                    !cancelClickDueToCursorMove
+                                ) {
                                     // 注意：不能再用 swipeDetected 抑制点击——swipeDetected 由 5dp 位移触发，
                                     // 而 dragActivated 由 touch slop（更大）触发。两者之间的位移区间
                                     // （5dp~touchSlop）若被 swipeDetected 吞掉点击，且 drag 未激活无 dragEnd
                                     // 兜底，会造成快速打字漏键（吃键）。5dp 位移只用于取消长按（longPressJob）。
+                                    // 必须检查 hasTriggered*：detectDragGestures.onDragEnd 可能先把
+                                    // dragActivated 清掉，若不拦会补发字母进拼音（旧机更易复现）。
                                     currentOnClick()
                                 }
                             }

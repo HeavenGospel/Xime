@@ -54,6 +54,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import com.kingzcheung.xime.keyboard.GestureAction
+import com.kingzcheung.xime.settings.GestureDef
 import com.kingzcheung.xime.settings.KeyCustomizeStore
 import com.kingzcheung.xime.settings.KeyGestureConfig
 import com.kingzcheung.xime.settings.KeysConfigHelper
@@ -435,15 +437,21 @@ private fun KeyEditDialog(
             ?: effective?.tap?.label?.takeIf { it.isNotEmpty() }
             ?: keyId
 
-    fun initialSwipeUp(): String =
-        existingOverride?.swipeUp
-            ?: effective?.swipeUp?.label?.takeIf { it.isNotEmpty() }
-            ?: effective?.swipeUp?.value.orEmpty()
+    fun initialSwipeUp(): String {
+        existingOverride?.swipeUp?.let { return it }
+        val g = effective?.swipeUp ?: return ""
+        if (g.action == GestureAction.NONE) return ""
+        return g.label.takeIf { it.isNotEmpty() } ?: g.value
+    }
 
-    fun initialSwipeDown(): String =
-        existingOverride?.swipeDown
-            ?: effective?.swipeDown?.label?.takeIf { it.isNotEmpty() }
-            ?: effective?.swipeDown?.value.orEmpty()
+    fun initialSwipeDown(): String {
+        existingOverride?.swipeDown?.let { return it }
+        val g = effective?.swipeDown ?: return ""
+        // YAML 里大量下滑是五笔/仓颉字根展示（action:none），不能预填进「上屏」编辑框，
+        // 否则一点保存就会把整串字根变成 COMMIT，上滑/下滑像打出「不明拼音」。
+        if (g.action == GestureAction.NONE) return ""
+        return g.label.takeIf { it.isNotEmpty() } ?: g.value
+    }
 
     fun initialLongPress(): String =
         existingOverride?.longPress?.joinToString(", ")
@@ -509,6 +517,15 @@ private fun KeyEditDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                val yamlDownHint = yamlBase?.swipeDown?.takeIf { it.action == GestureAction.NONE }
+                    ?.let { it.label.takeIf { l -> l.isNotEmpty() } ?: it.value }
+                if (!yamlDownHint.isNullOrEmpty()) {
+                    Text(
+                        text = "YAML 下滑仅展示（不上屏）：$yamlDownHint",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         },
         confirmButton = {
@@ -519,10 +536,26 @@ private fun KeyEditDialog(
                         .map { it.trim() }
                         .filter { it.isNotEmpty() }
                         .take(10)
+                    fun swipeField(edited: String, existing: String?, yaml: GestureDef?): String? {
+                        val t = edited.trim()
+                        if (t.isEmpty()) {
+                            // 未改过且 YAML 为仅展示：保持不覆盖，保留 action:none
+                            if (existing == null && (yaml == null || yaml.action == GestureAction.NONE)) {
+                                return null
+                            }
+                            return "" // 显式清空
+                        }
+                        // 与 YAML 展示文案相同且 YAML 为 none：不要存成 COMMIT
+                        if (existing == null && yaml?.action == GestureAction.NONE) {
+                            val yamlText = yaml.label.takeIf { it.isNotEmpty() } ?: yaml.value
+                            if (t == yamlText) return null
+                        }
+                        return t
+                    }
                     val override = KeyCustomizeStore.KeyOverride(
                         tapLabel = tapLabel.trim(),
-                        swipeUp = swipeUp.trim(),
-                        swipeDown = swipeDown.trim(),
+                        swipeUp = swipeField(swipeUp, existingOverride?.swipeUp, yamlBase?.swipeUp),
+                        swipeDown = swipeField(swipeDown, existingOverride?.swipeDown, yamlBase?.swipeDown),
                         longPress = longPress,
                     )
                     KeysConfigHelper.saveKeyCustomization(context, isAsciiMode, keyId, override)

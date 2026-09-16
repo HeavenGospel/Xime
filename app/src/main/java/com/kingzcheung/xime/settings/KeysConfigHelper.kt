@@ -1379,10 +1379,12 @@ object KeysConfigHelper {
     
     fun getSwipeUpText(key: String, isAsciiMode: Boolean = false): String? {
         val configMap = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
-        val gesture = configMap[key.lowercase()]?.swipeUp
-        if (gesture != null) {
+        val keyConfig = configMap[key.lowercase()]
+        if (keyConfig != null) {
+            val gesture = keyConfig.swipeUp ?: return null
             if (gesture.value.isNotEmpty()) return gesture.value
             if (gesture.label.isNotEmpty()) return gesture.label
+            return null
         }
         return config.swipeUp[key.lowercase()]
     }
@@ -1395,10 +1397,12 @@ object KeysConfigHelper {
     /** 获取上滑显示文本（优先 label，fallback value） */
     fun getSwipeUpLabel(key: String, isAsciiMode: Boolean = false): String? {
         val configMap = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
-        val gesture = configMap[key.lowercase()]?.swipeUp
-        if (gesture != null) {
+        val keyConfig = configMap[key.lowercase()]
+        if (keyConfig != null) {
+            val gesture = keyConfig.swipeUp ?: return null
             if (gesture.label.isNotEmpty()) return gesture.label
             if (gesture.value.isNotEmpty()) return gesture.value
+            return null
         }
         return config.swipeUp[key.lowercase()]
     }
@@ -1406,10 +1410,13 @@ object KeysConfigHelper {
     /** 获取上滑提交值（优先 value，fallback label） */
     fun getSwipeUpCommitValue(key: String, isAsciiMode: Boolean = false): String? {
         val configMap = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value
-        val gesture = configMap[key.lowercase()]?.swipeUp
-        if (gesture != null) {
+        val keyConfig = configMap[key.lowercase()]
+        if (keyConfig != null) {
+            // 键已在手势表中：swipeUp == null 表示已清除，勿回落到硬编码默认数字/符号
+            val gesture = keyConfig.swipeUp ?: return null
             if (gesture.value.isNotEmpty()) return gesture.value
             if (gesture.label.isNotEmpty()) return gesture.label
+            return null
         }
         return config.swipeUp[key.lowercase()]
     }
