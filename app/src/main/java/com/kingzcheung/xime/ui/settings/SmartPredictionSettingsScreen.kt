@@ -199,6 +199,9 @@ fun SmartPredictionSettingsContent(
                         mutableStateOf(SettingsPreferences.isSingleAssociationMode(context))
                     }
                     SettingsSection(title = "联想行为", content = {
+                        var symbolsTriggerEnabled by remember {
+                            mutableStateOf(SettingsPreferences.isSymbolsTriggerAssociationEnabled(context))
+                        }
                         SettingsToggleItem(
                             icon = Icons.Default.AutoAwesome,
                             title = "空格上屏联想候选",
@@ -207,6 +210,21 @@ fun SmartPredictionSettingsContent(
                             onCheckedChange = {
                                 spaceCommitEnabled = it
                                 SettingsPreferences.setSpaceCommitAssociationEnabled(context, it)
+                            }
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = 16.dp),
+                            thickness = 0.5.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                        SettingsToggleItem(
+                            icon = Icons.Default.AutoAwesome,
+                            title = "符号触发联想",
+                            subtitle = "上屏标点/符号后是否继续推理联想词（默认关闭）",
+                            checked = symbolsTriggerEnabled,
+                            onCheckedChange = {
+                                symbolsTriggerEnabled = it
+                                SettingsPreferences.setSymbolsTriggerAssociationEnabled(context, it)
                             }
                         )
                         HorizontalDivider(

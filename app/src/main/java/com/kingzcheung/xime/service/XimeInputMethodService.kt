@@ -2336,13 +2336,27 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
 
     private fun commitTextAndPredict(text: String, isPaste: Boolean) {
         commitTextSilently(text, isPaste)
-        if (isChineseMode) {
+        if (!isChineseMode) return
+        // 纯符号/标点上屏：默认不触发联想（可在「智能联想 → 符号触发联想」打开）
+        if (!SettingsPreferences.isSymbolsTriggerAssociationEnabled(this) &&
+            isAssociationSymbolOnlyCommit(text)
+        ) {
             mainHandler.post {
-                if (!uiState.value.isAsciiMode) {
-                    getPredictionFromPlugin(predictionManager.lastCommittedText)
-                }
+                candidateState.value = candidateState.value.copy(associationCandidates = emptyList())
+            }
+            return
+        }
+        mainHandler.post {
+            if (!uiState.value.isAsciiMode) {
+                getPredictionFromPlugin(predictionManager.lastCommittedText)
             }
         }
+    }
+
+    /** 本次上屏是否为「纯符号」：不含任何字母/汉字，则视为符号提交。 */
+    private fun isAssociationSymbolOnlyCommit(text: String): Boolean {
+        if (text.isEmpty()) return false
+        return text.none { it.isLetter() }
     }
 
     /**

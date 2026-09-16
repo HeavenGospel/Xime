@@ -28,6 +28,7 @@ object SettingsPreferences {
     private const val KEY_PREDICTION_SELECTED_MODEL = "prediction_selected_model"
     private const val KEY_SPACE_COMMIT_ASSOCIATION = "space_commit_association"
     private const val KEY_ASSOCIATION_SINGLE_MODE = "association_single_mode"
+    private const val KEY_SYMBOLS_TRIGGER_ASSOCIATION = "symbols_trigger_association"
     
     const val KEY_STT_ENABLED = "stt_enabled"
     const val KEY_STT_ONLINE_PLUGIN_ID = "stt_online_plugin_id"
@@ -426,6 +427,18 @@ object SettingsPreferences {
 
     fun setAssociationSingleMode(context: Context, single: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_ASSOCIATION_SINGLE_MODE, single).apply()
+    }
+
+    /**
+     * 上屏纯符号/标点时是否触发智能联想。
+     * 默认关闭：装联想模型后输入「，」「。」等不再刷出联想词；需要时可打开。
+     */
+    fun isSymbolsTriggerAssociationEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_SYMBOLS_TRIGGER_ASSOCIATION, false)
+    }
+
+    fun setSymbolsTriggerAssociationEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_SYMBOLS_TRIGGER_ASSOCIATION, enabled).apply()
     }
     
     fun isSttEnabled(context: Context): Boolean {
