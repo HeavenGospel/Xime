@@ -102,6 +102,7 @@ cd Xime
 ## Acknowledgments
 
 - **[ximeiorg/Xime](https://github.com/ximeiorg/Xime)** — [Kingz Cheung](https://github.com/kingzcheung) and upstream contributors
+- [WindInput](https://github.com/huanfeng/WindInput) — design reference for prefix association, fuzzy pinyin groups, and codetable interaction
 - [Rime](https://rime.im/) · [Trime](https://github.com/osfans/trime) · [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android)
 
 ## License

@@ -159,6 +159,7 @@ git submodule update --init --recursive
 ## 致謝
 
 - [Rime](https://rime.im/) - 中州韻輸入法引擎
+- [清風輸入法 WindInput](https://github.com/huanfeng/WindInput) - 詞庫前綴聯想、模糊音分組與碼表交互等設計參考
 - [Trime](https://github.com/osfans/trime) - 同文輸入法，設定參考
 - [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android) - 鍵盤佈局參考
 - [onnxruntime](https://github.com/microsoft/onnxruntime) - 聯想詞預測與語音辨識的 ONNX 推論引擎

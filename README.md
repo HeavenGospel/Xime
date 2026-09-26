@@ -143,6 +143,7 @@ cd Xime
 ## 致谢
 
 - **[ximeiorg/Xime](https://github.com/ximeiorg/Xime)** — 原项目作者 [Kingz Cheung](https://github.com/kingzcheung) 及上游贡献者
+- [清风输入法 WindInput](https://github.com/huanfeng/WindInput) — 词库前缀联想、模糊音分组与码表交互等设计参考
 - [Rime](https://rime.im/) · [Trime](https://github.com/osfans/trime) · [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android)
 - [onnxruntime](https://github.com/microsoft/onnxruntime)
 
