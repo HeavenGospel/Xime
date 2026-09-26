@@ -429,7 +429,9 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                             if (SettingsPreferences.isSingleAssociationMode(service)) {
                                 service.predictionManager.suppressNextPredictionOnce()
                             }
-                            service.commitText(association)
+                            service.commitText(
+                                service.predictionManager.resolveAssociationCommit(association)
+                            )
                         }
                     } else {
                         withContext(Dispatchers.Main) {

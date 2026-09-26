@@ -8,6 +8,7 @@ import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.rime.RimeConfigHelper
 import com.kingzcheung.xime.rime.RimeEngine
 import com.kingzcheung.xime.settings.ImportManager
+import com.kingzcheung.xime.settings.FuzzyPinyinHelper
 import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.settings.PersonalDictManager
 import com.kingzcheung.xime.settings.SchemaManifestManager
@@ -204,6 +205,7 @@ class SchemaSettingsViewModel(application: Application) : AndroidViewModel(appli
         viewModelScope.launch {
             _uiState.update { it.copy(isDeploying = true) }
             val success = withContext(Dispatchers.IO) {
+                FuzzyPinyinHelper.applyToSchemas(context)
                 PersonalDictManager.ensureSchemaPacks(context)
                 KeysConfigHelper.loadConfig(context)
                 KeyboardThemes.reload(context)

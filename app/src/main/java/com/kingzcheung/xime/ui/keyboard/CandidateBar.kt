@@ -12,6 +12,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -41,10 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.draw.alpha
-import com.kingzcheung.xime.data.ToolbarScrollMemory
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,6 +70,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kingzcheung.xime.R
@@ -81,6 +80,7 @@ import com.kingzcheung.xime.keyboard.PanelType
 import com.kingzcheung.xime.keyboard.ToolbarAction
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.speech.RecognitionState
+import kotlin.math.roundToInt
 
 @Immutable
 data class CandidateBarVisuals(
@@ -127,36 +127,8 @@ fun CandidateBar(
     val horizontalPadding = if (isLandscape) 50.dp else 8.dp
     val context = LocalContext.current
 
-    // 工具栏横向滚动记忆：先定位再显示，避免「先闪到开头再拉回去」
-    val toolbarScrollState = rememberScrollState(initial = ToolbarScrollMemory.offsetPx)
-    var toolbarScrollReady by remember { mutableStateOf(ToolbarScrollMemory.offsetPx == 0) }
-    LaunchedEffect(toolbarScrollState) {
-        snapshotFlow { toolbarScrollState.value to toolbarScrollState.maxValue }
-            .collect { (offset, max) ->
-                // max==0 时多为尚未量完，勿把记忆写成 0
-                if (max > 0) ToolbarScrollMemory.offsetPx = offset
-            }
-    }
-    LaunchedEffect(state is CandidateBarState.Idle, toolbarActions.size) {
-        if (state !is CandidateBarState.Idle) {
-            toolbarScrollReady = false
-            return@LaunchedEffect
-        }
-        val remembered = ToolbarScrollMemory.offsetPx
-        if (remembered == 0) {
-            toolbarScrollReady = true
-            return@LaunchedEffect
-        }
-        // 先隐藏，等布局出 maxValue 后再瞬间 scrollTo（无动画）
-        toolbarScrollReady = false
-        withFrameNanos { }
-        withFrameNanos { }
-        val target = remembered.coerceIn(0, toolbarScrollState.maxValue)
-        if (toolbarScrollState.value != target) {
-            toolbarScrollState.scrollTo(target)
-        }
-        toolbarScrollReady = true
-    }
+    // Idle 工具栏横向滚动（仅内容仍超出时启用；默认对齐由下方自适应居中逻辑处理）
+    val toolbarScrollState = rememberScrollState()
 
     // M3 角色色：图标按钮背景用 surface 与 primary 的混合色调（带种子色但不过于强烈），
     // 按压态用 onSurface 12% state layer
@@ -498,45 +470,101 @@ fun CandidateBar(
             when {
                 state is CandidateBarState.Idle -> {
                     val toolbarAlignment = SettingsPreferences.getToolbarAlignment(context)
-                    val toolbarArrangement = when (toolbarAlignment) {
-                        SettingsPreferences.TOOLBAR_ALIGN_START -> Arrangement.Start
-                        SettingsPreferences.TOOLBAR_ALIGN_CENTER -> Arrangement.Center
-                        else -> Arrangement.End
-                    }
-                    // 外层负责对齐，内层 horizontalScroll：否则滚动容器宽度=内容宽，居中无效
-                    Row(
+                    // 自适应居中：优先收紧图标间距让全部按钮完整可见并居中；
+                    // 仍放不下才横向滚动，并按对齐方式给出初始偏移（居中≈对半），不再记忆滚动位置。
+                    BoxWithConstraints(
                         modifier = Modifier
                             .weight(1f, fill = true)
-                            .fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = toolbarArrangement,
+                            .fillMaxWidth()
                     ) {
+                        val buttonCount = toolbarActions.size
+                        val buttonSize = 32.dp
+                        val defaultHPad = 5.dp
+                        val minHPad = 0.dp
+                        val hPad: Dp = remember(buttonCount, maxWidth) {
+                            if (buttonCount <= 0) return@remember defaultHPad
+                            val atDefault = buttonSize * buttonCount + defaultHPad * 2 * buttonCount
+                            if (atDefault <= maxWidth) {
+                                defaultHPad
+                            } else {
+                                val remaining = maxWidth - buttonSize * buttonCount
+                                if (remaining <= 0.dp) minHPad
+                                else (remaining / (2f * buttonCount)).coerceIn(minHPad, defaultHPad)
+                            }
+                        }
+                        val contentWidth = buttonSize * buttonCount + hPad * 2 * buttonCount
+                        val needsScroll = buttonCount > 0 && contentWidth > maxWidth
+
+                        LaunchedEffect(needsScroll, toolbarAlignment, buttonCount, maxWidth, hPad) {
+                            if (!needsScroll) {
+                                if (toolbarScrollState.value != 0) toolbarScrollState.scrollTo(0)
+                                return@LaunchedEffect
+                            }
+                            // 等出可滚动范围后再定位；最多等几帧，避免 maxValue 一直为 0 时挂死
+                            var maxScroll = toolbarScrollState.maxValue
+                            var frames = 0
+                            while (maxScroll <= 0 && frames < 8) {
+                                withFrameNanos { }
+                                maxScroll = toolbarScrollState.maxValue
+                                frames++
+                            }
+                            if (maxScroll <= 0) return@LaunchedEffect
+                            val pitchPx = with(density) { (buttonSize + hPad * 2).roundToPx().coerceAtLeast(1) }
+                            val target = when (toolbarAlignment) {
+                                SettingsPreferences.TOOLBAR_ALIGN_END -> maxScroll
+                                SettingsPreferences.TOOLBAR_ALIGN_CENTER -> {
+                                    val raw = maxScroll / 2f
+                                    // 对齐到按钮节距，避免左右边缘各切半个图标
+                                    ((raw / pitchPx).roundToInt() * pitchPx).coerceIn(0, maxScroll)
+                                }
+                                else -> 0
+                            }
+                            if (toolbarScrollState.value != target) {
+                                toolbarScrollState.scrollTo(target)
+                            }
+                        }
+
+                        val arrangement = when {
+                            needsScroll -> Arrangement.Start
+                            toolbarAlignment == SettingsPreferences.TOOLBAR_ALIGN_START -> Arrangement.Start
+                            toolbarAlignment == SettingsPreferences.TOOLBAR_ALIGN_END -> Arrangement.End
+                            else -> Arrangement.Center
+                        }
+
                         Row(
-                            modifier = Modifier
-                                .horizontalScroll(toolbarScrollState)
-                                .alpha(if (toolbarScrollReady) 1f else 0f),
+                            modifier = Modifier.fillMaxSize(),
                             verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = arrangement,
                         ) {
-                            if (toolbarActions.isNotEmpty()) {
-                                toolbarActions.forEach { action ->
-                                    val interactionSource = remember { MutableInteractionSource() }
-                                    val isPressed by interactionSource.collectIsPressedAsState()
-                                    Box(
-                                        modifier = Modifier
-                                            .padding(horizontal = 5.dp)
-                                            .size(32.dp)
-                                            .clickable(
-                                                interactionSource = interactionSource,
-                                                indication = null,
-                                                onClick = action.onClick
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        ToolbarButtonIcon(
-                                            item = action.item,
-                                            tint = if (isPressed) iconButtonTint.copy(alpha = 0.6f) else iconButtonTint,
-                                            modifier = Modifier.size(22.dp),
-                                        )
+                            Row(
+                                modifier = if (needsScroll) {
+                                    Modifier.horizontalScroll(toolbarScrollState)
+                                } else {
+                                    Modifier
+                                },
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (toolbarActions.isNotEmpty()) {
+                                    toolbarActions.forEach { action ->
+                                        val interactionSource = remember { MutableInteractionSource() }
+                                        val isPressed by interactionSource.collectIsPressedAsState()
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(horizontal = hPad)
+                                                .size(buttonSize)
+                                                .clickable(
+                                                    interactionSource = interactionSource,
+                                                    indication = null,
+                                                    onClick = action.onClick
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            ToolbarButtonIcon(
+                                                item = action.item,
+                                                tint = if (isPressed) iconButtonTint.copy(alpha = 0.6f) else iconButtonTint,
+                                                modifier = Modifier.size(22.dp),
+                                            )
+                                        }
                                     }
                                 }
                             }

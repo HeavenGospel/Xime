@@ -80,6 +80,7 @@ fun SettingsMainContent(
     onNavigateToPlugins: () -> Unit,
     onNavigateToModelLocal: () -> Unit = {},
     onNavigateToSmartPrediction: () -> Unit,
+    onNavigateToFuzzyPinyin: () -> Unit = {},
     onNavigateToSpeechToText: () -> Unit,
     onNavigateToAbout: () -> Unit,
     onNavigateToClipboardSync: () -> Unit = {},
@@ -331,8 +332,20 @@ fun SettingsMainContent(
                     SettingsItem(
                         icon = Icons.TwoTone.AutoAwesome,
                         title = "智能联想",
-                        subtitle = "基于 AI 模型的智能联想词预测",
+                        subtitle = "关闭用词库联想；开启用 AI 模型",
                         onClick = onNavigateToSmartPrediction,
+                        showArrow = true
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 56.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    SettingsItem(
+                        icon = Icons.TwoTone.TypeSpecimen,
+                        title = "模糊拼音",
+                        subtitle = "zh/z、an/ang 等相近音互通",
+                        onClick = onNavigateToFuzzyPinyin,
                         showArrow = true
                     )
                     HorizontalDivider(

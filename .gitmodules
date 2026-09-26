@@ -19,4 +19,4 @@
 	url = https://github.com/rime/librime-predict.git
 [submodule "app/src/main/assets/rime"]
 	path = app/src/main/assets/rime
-	url = https://github.com/kingzcheung/rime-wubi.git
+	url = https://github.com/HeavenGospel/rime-wubi.git

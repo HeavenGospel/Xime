@@ -29,6 +29,8 @@ object SettingsPreferences {
     private const val KEY_SPACE_COMMIT_ASSOCIATION = "space_commit_association"
     private const val KEY_ASSOCIATION_SINGLE_MODE = "association_single_mode"
     private const val KEY_SYMBOLS_TRIGGER_ASSOCIATION = "symbols_trigger_association"
+    private const val KEY_FUZZY_PINYIN_PREFIX = "fuzzy_pinyin_"
+
     
     const val KEY_STT_ENABLED = "stt_enabled"
     const val KEY_STT_ONLINE_PLUGIN_ID = "stt_online_plugin_id"
@@ -440,7 +442,15 @@ object SettingsPreferences {
     fun setSymbolsTriggerAssociationEnabled(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_SYMBOLS_TRIGGER_ASSOCIATION, enabled).apply()
     }
-    
+
+    fun isFuzzyPinyinGroupEnabled(context: Context, groupId: String): Boolean {
+        return getPrefs(context).getBoolean(KEY_FUZZY_PINYIN_PREFIX + groupId, false)
+    }
+
+    fun setFuzzyPinyinGroupEnabled(context: Context, groupId: String, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_FUZZY_PINYIN_PREFIX + groupId, enabled).apply()
+    }
+
     fun isSttEnabled(context: Context): Boolean {
         return getPrefs(context).getBoolean(KEY_STT_ENABLED, false)
     }

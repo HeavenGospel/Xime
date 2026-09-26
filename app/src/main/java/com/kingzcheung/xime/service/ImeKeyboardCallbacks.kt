@@ -95,7 +95,8 @@ internal fun rememberImeKeyboardCallbacks(
                         if (!service.uiState.value.isAsciiMode && SettingsPreferences.isSingleAssociationMode(service)) {
                             service.predictionManager.suppressNextPredictionOnce()
                         }
-                        service.commitText(text)
+                        // Prefix 联想展示整词、只补后缀；ONNX 原样上屏
+                        service.commitText(service.predictionManager.resolveAssociationCommit(text))
                         service.updateUI()
                     }
                 }

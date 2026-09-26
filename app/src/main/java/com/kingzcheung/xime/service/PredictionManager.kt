@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.kingzcheung.xime.association.AssociationManager
 import com.kingzcheung.xime.association.AssociationService
+import com.kingzcheung.xime.association.PrefixAssociationEngine
 import com.kingzcheung.xime.BuildConfig
 import com.kingzcheung.xime.plugin.ExtensionManager
 import com.kingzcheung.xime.settings.SettingsPreferences
@@ -49,6 +50,14 @@ class PredictionManager(
     fun suppressNextPredictionOnce() {
         suppressNextPrediction = true
     }
+
+    /**
+     * 最近一次 Prefix 联想：display → commitSuffix。
+     * 候选栏展示整词；上屏须走 [resolveAssociationCommit]，否则会把前缀再打一遍。
+     * ONNX / 英文路径不写此表，resolve 时原样返回。
+     */
+    @Volatile
+    private var prefixCommitMap: Map<String, String> = emptyMap()
     
     fun appendCommittedText(text: String) {
         _lastCommittedText = (_lastCommittedText + text).takeLast(MAX_CONTEXT_LENGTH)
@@ -59,12 +68,18 @@ class PredictionManager(
     
     fun clearCommittedText() {
         _lastCommittedText = ""
+        prefixCommitMap = emptyMap()
     }
     
     fun deleteLastChar() {
         if (_lastCommittedText.isNotEmpty()) {
             _lastCommittedText = _lastCommittedText.dropLast(1)
         }
+    }
+
+    /** 联想点选/空格上屏：Prefix 模式只补后缀，ONNX 模式原样上屏。 */
+    fun resolveAssociationCommit(displayed: String): String {
+        return prefixCommitMap[displayed] ?: displayed
     }
     
     fun initialize() {
@@ -78,6 +93,9 @@ class PredictionManager(
                 } else {
                     FileLogger.w(TAG, "Trie association service initialization failed")
                 }
+
+                val prefixOk = PrefixAssociationEngine.ensureLoaded(context)
+                FileLogger.i(TAG, "Prefix association index ready=$prefixOk")
                 
                 if (!ExtensionManager.isInitialized()) {
                     FileLogger.d(TAG, "ExtensionManager not initialized, initializing...")
@@ -106,56 +124,70 @@ class PredictionManager(
         // 单次联想：消费抑制标志——联想上屏引发的本轮推理不执行，回调空结果清空候选栏
         if (suppressNextPrediction) {
             suppressNextPrediction = false
+            prefixCommitMap = emptyMap()
             onPredictionResult(emptyList())
             return
         }
 
         if (contextText.isEmpty()) {
+            prefixCommitMap = emptyMap()
             onPredictionResult(emptyList())
             return
         }
-        
-        if (!SettingsPreferences.isSmartPredictionEnabled(context)) {
-            onPredictionResult(emptyList())
-            return
-        }
-        
+
+        val useOnnx = SettingsPreferences.isSmartPredictionEnabled(context)
         val epoch = requestEpoch
         serviceScope.launch {
             try {
-                if (!AssociationManager.isInitialized()) {
-                    val initSuccess = withContext(Dispatchers.IO) {
-                        AssociationManager.initialize(context)
-                    }
-                    if (!initSuccess) {
-                        Log.e(TAG, "Failed to initialize AssociationManager")
-                        withContext(Dispatchers.Main) {
-                            if (epoch == requestEpoch) {
-                                onPredictionResult(emptyList())
-                            }
-                        }
-                        return@launch
-                    }
+                val displayList: List<String> = if (useOnnx) {
+                    prefixCommitMap = emptyMap()
+                    predictOnnx(contextText)
+                } else {
+                    predictPrefix(contextText)
                 }
-                
-                val candidates = AssociationManager.predict(contextText, MAX_ASSOCIATION_COUNT)
-                FileLogger.d(TAG, "Prediction returned ${candidates.size} candidates for '$contextText' (epoch ok: ${epoch == requestEpoch})")
+                FileLogger.d(
+                    TAG,
+                    "Prediction(${if (useOnnx) "onnx" else "prefix"}) " +
+                        "returned ${displayList.size} for '$contextText' (epoch ok: ${epoch == requestEpoch})"
+                )
 
                 withContext(Dispatchers.Main) {
-                    // 代际过期说明上下文已被退格/清空修改，丢弃过期结果避免候选栏闪动
                     if (epoch == requestEpoch) {
-                        onPredictionResult(candidates.map { it.text })
+                        onPredictionResult(displayList)
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Prediction failed", e)
                 withContext(Dispatchers.Main) {
                     if (epoch == requestEpoch) {
+                        prefixCommitMap = emptyMap()
                         onPredictionResult(emptyList())
                     }
                 }
             }
         }
+    }
+
+    private suspend fun predictOnnx(contextText: String): List<String> {
+        if (!AssociationManager.isInitialized()) {
+            val initSuccess = withContext(Dispatchers.IO) {
+                AssociationManager.initialize(context)
+            }
+            if (!initSuccess) {
+                Log.e(TAG, "Failed to initialize AssociationManager")
+                return emptyList()
+            }
+        }
+        return AssociationManager.predict(contextText, MAX_ASSOCIATION_COUNT).map { it.text }
+    }
+
+    private suspend fun predictPrefix(contextText: String): List<String> {
+        withContext(Dispatchers.IO) {
+            PrefixAssociationEngine.ensureLoaded(context)
+        }
+        val hits = PrefixAssociationEngine.lookup(contextText, MAX_ASSOCIATION_COUNT)
+        prefixCommitMap = hits.associate { it.display to it.commitSuffix }
+        return hits.map { it.display }
     }
     
     fun recordInput(text: String) {
@@ -181,12 +213,17 @@ class PredictionManager(
     
     suspend fun getChineseAssociations(text: String, limit: Int = MAX_ASSOCIATION_COUNT): List<String> {
         return try {
-            if (!AssociationManager.isInitialized()) {
-                AssociationManager.initialize(context)
+            if (SettingsPreferences.isSmartPredictionEnabled(context)) {
+                if (!AssociationManager.isInitialized()) {
+                    AssociationManager.initialize(context)
+                }
+                AssociationManager.predict(text, limit).map { it.text }
+            } else {
+                PrefixAssociationEngine.ensureLoaded(context)
+                val hits = PrefixAssociationEngine.lookup(text, limit)
+                prefixCommitMap = hits.associate { it.display to it.commitSuffix }
+                hits.map { it.display }
             }
-            
-            val candidates = AssociationManager.predict(text, limit)
-            candidates.map { it.text }
         } catch (e: Exception) {
             Log.e(TAG, "Chinese association failed", e)
             emptyList()

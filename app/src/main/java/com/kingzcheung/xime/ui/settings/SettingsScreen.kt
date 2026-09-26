@@ -53,6 +53,7 @@ fun SettingsScreen(
                 onNavigateToPlugins = { navController.navigate(SettingsRoutes.Plugins) },
                 onNavigateToModelLocal = { navController.navigate(SettingsRoutes.ModelLocal) },
                 onNavigateToSmartPrediction = { navController.navigate(SettingsRoutes.SmartPrediction) },
+                onNavigateToFuzzyPinyin = { navController.navigate(SettingsRoutes.FuzzyPinyin) },
                 onNavigateToSpeechToText = { navController.navigate(SettingsRoutes.SpeechToText) },
                 onNavigateToAbout = { navController.navigate(SettingsRoutes.About) },
                 onNavigateToClipboardSync = { navController.navigate(SettingsRoutes.ClipboardSync) },
@@ -189,6 +190,11 @@ fun SettingsScreen(
                 onNavigateToModelDetail = { modelId ->
                     navController.navigate("model_market_detail/$modelId")
                 }
+            )
+        }
+        composable(SettingsRoutes.FuzzyPinyin) {
+            FuzzyPinyinSettingsContent(
+                onBack = { navController.popBackStack() },
             )
         }
         composable(SettingsRoutes.SpeechToText) {

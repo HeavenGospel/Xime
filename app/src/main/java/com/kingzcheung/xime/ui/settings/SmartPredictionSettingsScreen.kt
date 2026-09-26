@@ -134,12 +134,12 @@ fun SmartPredictionSettingsContent(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "启用智能联想",
+                                text = "启用 AI 智能联想",
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                text = "基于 AI 模型的智能联想词预测",
+                                text = "关闭（默认）：词库前缀联想（如「中」→「中国」）\n开启：本地 ONNX 模型预测下一词",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
