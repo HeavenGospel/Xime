@@ -20,6 +20,7 @@ import androidx.compose.material.icons.outlined.Gesture
 import androidx.compose.material.icons.twotone.Edit
 import androidx.compose.material.icons.twotone.Mic
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.kingzcheung.xime.bitwarden.BitwardenIcons
 
 enum class ToolbarButton(
     val id: String,
@@ -28,6 +29,7 @@ enum class ToolbarButton(
 ) {
     EMOJI("emoji", "表情", Icons.TwoTone.EmojiEmotions),
     CLIPBOARD("clipboard", "剪贴板", Icons.AutoMirrored.TwoTone.Assignment),
+    BITWARDEN("bitwarden", "密码库", BitwardenIcons.Shield),
     SCHEMA("schema", "方案选择", Icons.TwoTone.KeyboardAlt),
     QUICK_PHRASE("quick_phrase", "快捷发送", Icons.TwoTone.Quickreply),
     SYMBOL("symbol", "符号", Icons.TwoTone.Paid),
@@ -51,5 +53,8 @@ enum class ToolbarButton(
 
 data class ToolbarAction(
     val item: ToolbarButtonItem,
-    val onClick: () -> Unit
+    val onClick: () -> Unit,
+    val onLongClick: (() -> Unit)? = null,
+    /** 当前对应面板已打开（符号/剪贴板等），工具栏图标高亮 */
+    val isActive: Boolean = false,
 )

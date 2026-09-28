@@ -252,6 +252,7 @@ fun KeyboardView(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .fillMaxHeight()
         ) {
             var handwritingCandidates by remember { mutableStateOf<List<String>>(emptyList()) }
             var handwritingComments by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -330,6 +331,71 @@ fun KeyboardView(
                 )
             }
 
+            if (state.bitwardenPinVisible) {
+                BitwardenPinPanel(
+                    backgroundColor = Color.Transparent,
+                    textColor = keyTextColor,
+                    accentColor = accentColor,
+                    cardBgColor = keyBgColor,
+                    error = state.bitwardenPinError,
+                    onCancel = { callbacks.onHideBitwardenPin?.invoke() },
+                    onSubmit = { pin -> callbacks.onBitwardenPinSubmit?.invoke(pin) },
+                )
+            } else if (state.bitwardenEditVisible) {
+                val bwContext = LocalContext.current
+                BitwardenEditFormArea(
+                    repository = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(bwContext),
+                    focusedField = state.bitwardenEditField,
+                    customIndex = state.bitwardenEditCustomIndex,
+                    customIsName = state.bitwardenEditCustomIsName,
+                    backgroundColor = Color.Transparent,
+                    textColor = keyTextColor,
+                    accentColor = accentColor,
+                    cardBgColor = keyBgColor,
+                    onClose = { callbacks.onHideBitwardenEdit?.invoke() },
+                    onFieldFocus = { field, idx, isName ->
+                        callbacks.onBitwardenEditFieldFocus?.invoke(field, idx, isName)
+                    },
+                )
+            } else if (state.bitwardenDetailVisible) {
+                val bwContext = LocalContext.current
+                BitwardenDetailPanel(
+                    repository = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(bwContext),
+                    backgroundColor = Color.Transparent,
+                    textColor = keyTextColor,
+                    accentColor = accentColor,
+                    cardBgColor = keyBgColor,
+                    onBack = { callbacks.onHideBitwardenDetail?.invoke() },
+                    onEdit = { callbacks.onBitwardenDetailEdit?.invoke() },
+                    onFillUsername = { text -> callbacks.onBitwardenFill?.invoke(text) },
+                    onFillPassword = { text -> callbacks.onBitwardenFill?.invoke(text) },
+                    onFillTotp = { text -> callbacks.onBitwardenFill?.invoke(text) },
+                    onCopy = { text -> callbacks.onBitwardenCopy?.invoke(text) },
+                )
+            } else if (state.bitwardenSearchVisible) {
+                val bwContext = LocalContext.current
+                BitwardenSearchPanel(
+                    repository = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(bwContext),
+                    packageName = callbacks.hostPackageName?.invoke(),
+                    isFocused = state.bitwardenSearchFocused,
+                    backgroundColor = Color.Transparent,
+                    textColor = keyTextColor,
+                    accentColor = accentColor,
+                    cardBgColor = keyBgColor,
+                    onFocusChange = { focused -> callbacks.onBitwardenSearchFocusChange?.invoke(focused) },
+                    onFillUsername = { text -> callbacks.onBitwardenFill?.invoke(text) },
+                    onFillPassword = { text -> callbacks.onBitwardenFill?.invoke(text) },
+                    onFillTotp = { text -> callbacks.onBitwardenFill?.invoke(text) },
+                    onOpenDetail = { item -> callbacks.onShowBitwardenDetail?.invoke(item) },
+                    onAdd = { callbacks.onShowBitwardenEdit?.invoke() },
+                    onSync = { callbacks.onBitwardenSync?.invoke() },
+                    onOpenSettings = {
+                        callbacks.onHideBitwardenSearch?.invoke()
+                        callbacks.onOpenBitwardenSettings?.invoke()
+                    },
+                )
+            }
+
             // ACTIVE 输入面板在候选栏上方（需要 EditText 输入，保留候选栏可见）；
             // PASSIVE 纯展示面板走 Overlay 全屏（KeyboardView 底部 Overlay 分支渲染 InfoPanel）
             if (state.toolPanelVisible && state.toolPanelDisplay != "PASSIVE") {
@@ -362,13 +428,15 @@ fun KeyboardView(
                         if (!com.kingzcheung.xime.handwriting.HandwritingEngine.hasModel(LocalContext.current)) return@mapNotNull null
                     }
                     val toolbarContext = LocalContext.current
+                    val overlayRoute = (page as? KeyboardPage.Overlay)?.route
                     val onClick: () -> Unit = when (item) {
                         is ToolbarButtonItem.Builtin -> when (item.button) {
                             ToolbarButton.EMOJI -> ({ viewModel.showOverlay(OverlayRoute.Emoji) })
-                            ToolbarButton.CLIPBOARD -> ({ viewModel.showOverlay(OverlayRoute.Clipboard(0)) })
+                            ToolbarButton.CLIPBOARD -> ({ viewModel.toggleOverlay(OverlayRoute.Clipboard(0)) })
+                            ToolbarButton.BITWARDEN -> ({ callbacks.onShowBitwardenSearch?.invoke() })
                             ToolbarButton.SCHEMA -> ({ viewModel.showOverlay(OverlayRoute.SchemaList, listOf(OverlayRoute.Menu)) })
-                            ToolbarButton.QUICK_PHRASE -> ({ viewModel.showOverlay(OverlayRoute.Clipboard(1)) })
-                            ToolbarButton.SYMBOL -> ({ viewModel.showOverlay(OverlayRoute.Symbol) })
+                            ToolbarButton.QUICK_PHRASE -> ({ viewModel.toggleOverlay(OverlayRoute.Clipboard(1)) })
+                            ToolbarButton.SYMBOL -> ({ viewModel.toggleOverlay(OverlayRoute.Symbol) })
                             ToolbarButton.SELECT_ALL -> ({ callbacks.onToolbarEditingAction?.invoke("select_all") })
                             ToolbarButton.COPY -> ({ callbacks.onToolbarEditingAction?.invoke("copy") })
                             ToolbarButton.PASTE -> ({ callbacks.onToolbarEditingAction?.invoke("paste") })
@@ -392,10 +460,16 @@ fun KeyboardView(
                             }
                         })
                     }
-                    ToolbarAction(item) {
+                    val isActive = item is ToolbarButtonItem.Builtin && when (item.button) {
+                        ToolbarButton.SYMBOL -> overlayRoute is OverlayRoute.Symbol
+                        ToolbarButton.CLIPBOARD -> overlayRoute == OverlayRoute.Clipboard(0)
+                        ToolbarButton.QUICK_PHRASE -> overlayRoute == OverlayRoute.Clipboard(1)
+                        else -> false
+                    }
+                    ToolbarAction(item, onClick = {
                         onHapticFeedback?.invoke()
                         onClick()
-                    }
+                    }, isActive = isActive)
                 },
                 visuals = CandidateBarVisuals(
                     backgroundColor = Color.Transparent,
@@ -1010,6 +1084,58 @@ fun KeyboardView(
                 }
             }
 
+            // 符号 / 剪贴板：停靠在工具栏下方（不进全屏 Overlay，避免盖住 CandidateBar）
+            val dockedRoute = (page as? KeyboardPage.Overlay)?.route
+            when (dockedRoute) {
+                is OverlayRoute.Symbol -> SymbolKeyboardLayout(
+                    onSelect = { symbol ->
+                        onHapticFeedback?.invoke()
+                        when (symbol) {
+                            "back" -> viewModel.closeOverlay()
+                            "delete" -> callbacks.onKeyPress("delete", false)
+                            "enter" -> callbacks.onKeyPress("enter", false)
+                            "space" -> callbacks.onKeyPress("space", false)
+                            else -> callbacks.onCommitText?.invoke(symbol)
+                        }
+                    },
+                    backgroundColor = keyboardBgColor,
+                    textColor = keyTextColor,
+                    accentColor = accentColor,
+                    keyBgColor = keyBgColor,
+                    bottomPaddingDp = state.keyboardBottomPaddingDp,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    onHapticFeedback = onHapticFeedback,
+                )
+                is OverlayRoute.Clipboard -> ClipboardView(
+                    clipboardItems = state.clipboardItems,
+                    quickSendItems = state.quickSendItems,
+                    selectedTab = dockedRoute.tab,
+                    backgroundColor = keyboardBgColor,
+                    keyTextColor = keyTextColor,
+                    keyBgColor = keyBgColor,
+                    viewModel = viewModel,
+                    onSelectItem = { text ->
+                        callbacks.onClipboardSelect?.invoke(text)
+                        viewModel.closeOverlay()
+                    },
+                    onSplitWords = { text, _ -> viewModel.pushOverlay(OverlayRoute.SplitWords(text)) },
+                    onClipboardTabChange = { viewModel.showOverlay(OverlayRoute.Clipboard(it)) },
+                    bottomPaddingDp = state.keyboardBottomPaddingDp,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    onQuickSendAddClick = {
+                        viewModel.closeOverlay()
+                        callbacks.onShowQuickSendForm?.invoke()
+                    },
+                    onQuickSendEditItem = { id, text, code ->
+                        viewModel.closeOverlay()
+                        callbacks.onQuickSendEditItem?.invoke(id, text, code)
+                    },
+                    onPullRemote = callbacks.onClipboardPullRemote,
+                    pullRemoteAvailable = state.clipboardSyncEnabled,
+                )
+                else -> {}
+            }
+
             val configuration = LocalConfiguration.current
             val isLandscapeBottom = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         }
@@ -1112,7 +1238,11 @@ fun KeyboardView(
             }
         }
 
-        if (page is KeyboardPage.Overlay) {
+        // 全屏 Overlay：盖住按键区+工具栏。符号/剪贴板已停靠在 CandidateBar 下，此处跳过。
+        val overlayRouteForFull = (page as? KeyboardPage.Overlay)?.route
+        val isToolbarDockedOverlay = overlayRouteForFull is OverlayRoute.Symbol ||
+            overlayRouteForFull is OverlayRoute.Clipboard
+        if (page is KeyboardPage.Overlay && !isToolbarDockedOverlay) {
             val appContext = LocalContext.current
             Box(
                 modifier = Modifier
@@ -1166,34 +1296,6 @@ fun KeyboardView(
                         },
                         onBack = { viewModel.popOverlay() },
                         modifier = Modifier.fillMaxWidth().fillMaxHeight()
-                    )
-                    is OverlayRoute.Clipboard -> ClipboardView(
-                        clipboardItems = state.clipboardItems,
-                        quickSendItems = state.quickSendItems,
-                        selectedTab = p.route.tab,
-                        backgroundColor = keyboardBgColor,
-                        keyTextColor = keyTextColor,
-                        keyBgColor = keyBgColor,
-                        viewModel = viewModel,
-                        onSelectItem = { text ->
-                            callbacks.onClipboardSelect?.invoke(text)
-                            viewModel.closeOverlay()
-                        },
-                        onSplitWords = { text, _ -> viewModel.pushOverlay(OverlayRoute.SplitWords(text)) },
-                        onBack = { viewModel.closeOverlay() },
-                        onClipboardTabChange = { viewModel.pushOverlay(OverlayRoute.Clipboard(it)) },
-                        bottomPaddingDp = state.keyboardBottomPaddingDp,
-                        modifier = Modifier.fillMaxWidth().fillMaxHeight(),
-                        onQuickSendAddClick = {
-                            viewModel.closeOverlay()
-                            callbacks.onShowQuickSendForm?.invoke()
-                        },
-                        onQuickSendEditItem = { id, text, code ->
-                            viewModel.closeOverlay()
-                            callbacks.onQuickSendEditItem?.invoke(id, text, code)
-                        },
-                        onPullRemote = callbacks.onClipboardPullRemote,
-                        pullRemoteAvailable = state.clipboardSyncEnabled,
                     )
                     is OverlayRoute.ToolbarCustomize -> ToolbarCustomizeView(
                         toolbarButtons = state.toolbarButtons,
@@ -1251,24 +1353,6 @@ fun KeyboardView(
                         modifier = Modifier.fillMaxWidth().fillMaxHeight(),
                         onHapticFeedback = onHapticFeedback,
                     )
-                    is OverlayRoute.Symbol -> SymbolKeyboardLayout(
-                        onSelect = { symbol ->
-                            onHapticFeedback?.invoke()
-                            if (symbol == "delete") {
-                                callbacks.onKeyPress("delete", false)
-                            } else {
-                                callbacks.onCommitText?.invoke(symbol)
-                            }
-                        },
-                        onBack = { viewModel.closeOverlay() },
-                        backgroundColor = keyboardBgColor,
-                        textColor = keyTextColor,
-                        accentColor = accentColor,
-                        keyBgColor = keyBgColor,
-                        bottomPaddingDp = state.keyboardBottomPaddingDp,
-                        modifier = Modifier.fillMaxWidth().fillMaxHeight(),
-                        onHapticFeedback = onHapticFeedback,
-                    )
                     is OverlayRoute.CandidatePage -> CandidatePage(
                         state = CandidatePageState(
                             candidates = candidateState.value.candidates.toList(),
@@ -1321,6 +1405,27 @@ fun KeyboardView(
                         onItemClick = { item -> callbacks.onToolPanelItemClick?.invoke(item) },
                         modifier = Modifier.fillMaxWidth().fillMaxHeight()
                     )
+                    is OverlayRoute.Bitwarden -> com.kingzcheung.xime.ui.menubar.BitwardenVaultView(
+                        repository = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(appContext),
+                        packageName = callbacks.hostPackageName?.invoke(),
+                        backgroundColor = keyboardBgColor,
+                        keyTextColor = keyTextColor,
+                        keyBgColor = keyBgColor,
+                        onCommitText = { text ->
+                            // 完整列表同样直写宿主，避免任何面板重定向；关闭由 View 内 onBack 完成
+                            callbacks.onBitwardenFill?.invoke(text)
+                        },
+                        onOpenSettings = {
+                            viewModel.closeOverlay()
+                            callbacks.onOpenBitwardenSettings?.invoke()
+                        },
+                        onBack = { viewModel.closeOverlay() },
+                        onRequestAddForm = { callbacks.onShowBitwardenEdit?.invoke() },
+                        bottomPaddingDp = state.keyboardBottomPaddingDp,
+                        modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                    )
+                    // Symbol / Clipboard 已在 CandidateBar 下方停靠渲染
+                    else -> {}
                 }
                 else -> {}
             }

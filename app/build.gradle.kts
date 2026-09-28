@@ -49,8 +49,8 @@ android {
         applicationId = "com.kingzcheung.xime"
         minSdk = 28
         targetSdk = 35
-        versionCode = 202609262
-        versionName = "2.8.8"
+        versionCode = 202609291
+        versionName = "2.9.10"
 
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -236,6 +236,10 @@ dependencies {
 
     // Autofill inline suggestions (API 30+)
     implementation(libs.androidx.autofill)
+
+    // Bitwarden vault: Argon2id KDF + EncryptedSharedPreferences for tokens
+    implementation("com.lambdapioneer.argon2kt:argon2kt:1.6.0")
+    implementation("androidx.security:security-crypto:1.1.0-alpha07")
 
     // exp4j for calculator expression evaluation
     implementation(libs.exp4j)

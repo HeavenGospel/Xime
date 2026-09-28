@@ -43,7 +43,156 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
         }
     }
 
+    /** 把按键路由到候选栏上方内部 EditText；中文模式字母仍进 Rime，选词后由 commitText 注入。 */
+    private fun routeKeysToEditText(
+        key: String,
+        isShifted: Boolean,
+        target: () -> android.widget.EditText?,
+        onEnter: () -> Unit,
+    ) {
+        val candState = service.candidateState.value
+        val hasComposing = candState.isComposing || candState.inputText.isNotEmpty()
+        when (key) {
+            "enter" -> {
+                if (hasComposing) {
+                    val input = candState.inputText
+                    service.mainHandler.post {
+                        target()?.let { et ->
+                            val start = et.selectionStart.coerceAtLeast(0)
+                            et.text?.replace(start, et.selectionEnd.coerceAtLeast(start), input)
+                            try { et.setSelection(start + input.length) } catch (_: Exception) {}
+                        }
+                        service.rimeEngine.clearComposition()
+                        service.candidateState.value = service.candidateState.value.copy(
+                            inputText = "",
+                            preeditText = "",
+                            pendingEnglishText = "",
+                            candidates = emptyList(),
+                            candidateComments = emptyList(),
+                            associationCandidates = emptyList(),
+                            isComposing = false,
+                            candidateActions = emptyList(),
+                        )
+                    }
+                    // 有组合态时只上屏，不触发关闭/保存等副作用
+                    return
+                }
+                onEnter()
+            }
+            "delete" -> {
+                if (hasComposing) {
+                    service.rimeEngine.processKey(0xff08, 0)
+                    val result = service.rimeEngine.getProcessResult(true)
+                    if (result.inputText.isEmpty()) service.rimeEngine.clearComposition()
+                    sendTransformedResult(result)
+                } else {
+                    target()?.let { et ->
+                        val start = et.selectionStart.coerceAtLeast(0)
+                        val end = et.selectionEnd.coerceAtLeast(start)
+                        if (start == end && start > 0) {
+                            et.text?.delete(start - 1, start)
+                            try { et.setSelection(start - 1) } catch (_: Exception) {}
+                        } else if (end > start) {
+                            et.text?.delete(start, end)
+                            try { et.setSelection(start) } catch (_: Exception) {}
+                        }
+                    }
+                }
+            }
+            "space" -> {
+                if (hasComposing && !service.uiState.value.isAsciiMode) {
+                    postRimeJob {
+                        val result = service.rimeEngine.appendSyllableDelimiter()
+                        if (result.processed) sendTransformedResult(result)
+                    }
+                } else {
+                    target()?.let { et ->
+                        val start = et.selectionStart.coerceAtLeast(0)
+                        et.text?.insert(start, " ")
+                        try { et.setSelection(start + 1) } catch (_: Exception) {}
+                    }
+                }
+            }
+            else -> {
+                if (key.length == 1) {
+                    val isLetter = key.matches(Regex("[a-zA-Z]"))
+                    val isChineseMode = !service.uiState.value.isAsciiMode
+                    if (isLetter && isChineseMode) {
+                        val keyCode = key.lowercase()[0].code
+                        val result = service.rimeEngine.processKeyAndGetResult(keyCode, 0)
+                        if (result.processed) sendTransformedResult(result)
+                    } else {
+                        val char = if (isShifted) key.uppercase() else key
+                        target()?.let { et ->
+                            val start = et.selectionStart.coerceAtLeast(0)
+                            et.text?.insert(start, char)
+                            try { et.setSelection(start + char.length) } catch (_: Exception) {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     internal fun handleKeyPress(key: String, isShifted: Boolean) {
+        if (service.uiState.value.bitwardenPinVisible && key != "ime_switch") {
+            routeKeysToEditText(
+                key = key,
+                isShifted = isShifted,
+                target = { BitwardenPinEditTextHolder.editText },
+                onEnter = {
+                    val pin = BitwardenPinEditTextHolder.editText?.text?.toString().orEmpty()
+                    if (pin.length >= 4) {
+                        service.mainHandler.post {
+                            if (com.kingzcheung.xime.bitwarden.BitwardenPrefs.verifyPin(service, pin)) {
+                                service.openBitwardenSearchPanel()
+                            } else {
+                                service.uiState.value = service.uiState.value.copy(
+                                    bitwardenPinError = "PIN 不正确",
+                                )
+                            }
+                        }
+                    }
+                },
+            )
+            return
+        }
+        if (service.uiState.value.bitwardenEditVisible && key != "ime_switch") {
+            routeKeysToEditText(
+                key = key,
+                isShifted = isShifted,
+                target = {
+                    BitwardenAppPickerEditTextHolder.editText
+                        ?: BitwardenEditFormHolders.get(
+                            service.uiState.value.bitwardenEditField,
+                            service.uiState.value.bitwardenEditCustomIndex,
+                            service.uiState.value.bitwardenEditCustomIsName,
+                        )
+                },
+                onEnter = {
+                    // App 选择搜索框：回车不保存
+                    if (BitwardenAppPickerEditTextHolder.editText != null) return@routeKeysToEditText
+                    service.mainHandler.post {
+                        kotlinx.coroutines.CoroutineScope(Dispatchers.Main).launch {
+                            val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(service)
+                            val result = withContext(Dispatchers.IO) { repo.saveEditing() }
+                            if (result.isSuccess) service.returnBitwardenAfterEdit()
+                        }
+                    }
+                },
+            )
+            return
+        }
+        if (service.uiState.value.bitwardenSearchVisible && key != "ime_switch") {
+            routeKeysToEditText(
+                key = key,
+                isShifted = isShifted,
+                target = { BitwardenSearchEditTextHolder.editText },
+                // 回车只收束拼音（若有），不关闭搜索列表
+                onEnter = {},
+            )
+            return
+        }
         if (service.uiState.value.toolPanelInputFocused) {
             val candState = service.candidateState.value
             val hasComposing = candState.isComposing || candState.inputText.isNotEmpty()

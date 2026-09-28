@@ -139,6 +139,18 @@ internal fun rememberImeKeyboardCallbacks(
             },
             onReloadConfig = { service.schemaController.reloadConfig() },
             onSettings = { service.schemaController.openSettings() },
+            hostPackageName = { service.currentInputEditorInfo?.packageName },
+            onOpenBitwardenSettings = {
+                try {
+                    val intent = com.kingzcheung.xime.MainActivity.buildOpenSettingsIntent(
+                        service,
+                        "bitwarden",
+                    )
+                    service.startActivity(intent)
+                } catch (e: Exception) {
+                    android.util.Log.e("XimeIME", "open bitwarden settings failed", e)
+                }
+            },
             onSwitchSchema = { schemaId -> service.schemaController.switchSchema(schemaId) },
             onToggleSchemaSwitch = { sw -> service.sessionController.toggleSchemaSwitch(sw) },
             onHideKeyboard = { service.hideKeyboard() },
@@ -471,6 +483,164 @@ internal fun rememberImeKeyboardCallbacks(
                     s.copy(quickSendCodeFocused = false)
                 }
             },
+            onShowBitwardenSearch = bitwardenToggle@{
+                val s = service.uiState.value
+                // 单击切换：已打开搜索/详情/编辑/PIN 时再点盾牌即关闭
+                if (s.bitwardenSearchVisible || s.bitwardenEditVisible ||
+                    s.bitwardenDetailVisible || s.bitwardenPinVisible
+                ) {
+                    service.closeBitwardenSearch()
+                    service.closeBitwardenDetail()
+                    service.closeBitwardenEdit()
+                    service.closeBitwardenPin()
+                    // 每次打开模式：关掉后下次仍要 PIN
+                    if (com.kingzcheung.xime.bitwarden.BitwardenPrefs.getPinMode(service) ==
+                        com.kingzcheung.xime.bitwarden.BitwardenPinMode.EVERY_OPEN
+                    ) {
+                        com.kingzcheung.xime.bitwarden.BitwardenPrefs.clearPinVerified(service)
+                    }
+                    service.uiState.value = service.uiState.value.copy(enterKeyText = "发送")
+                    return@bitwardenToggle
+                }
+                val page = service.keyboardViewModel.page.value
+                if (page is com.kingzcheung.xime.keyboard.KeyboardPage.Overlay &&
+                    page.route is OverlayRoute.Bitwarden
+                ) {
+                    service.keyboardViewModel.closeOverlay()
+                    return@bitwardenToggle
+                }
+                if (com.kingzcheung.xime.bitwarden.BitwardenPrefs.isPinRequiredToOpen(service)) {
+                    service.closeToolPanel()
+                    service.closeBitwardenEdit()
+                    service.closeBitwardenSearch()
+                    service.keyboardViewModel.closeOverlay()
+                    service.uiState.value = service.uiState.value.copy(
+                        showQuickSendForm = false,
+                        bitwardenPinVisible = true,
+                        bitwardenPinFocused = true,
+                        bitwardenPinError = null,
+                        enterKeyText = "确认",
+                    )
+                    return@bitwardenToggle
+                }
+                service.openBitwardenSearchPanel()
+            },
+            onHideBitwardenPin = {
+                service.closeBitwardenPin()
+                service.uiState.value = service.uiState.value.copy(enterKeyText = "发送")
+            },
+            onBitwardenPinSubmit = { pin ->
+                if (com.kingzcheung.xime.bitwarden.BitwardenPrefs.verifyPin(service, pin)) {
+                    service.openBitwardenSearchPanel()
+                } else {
+                    service.uiState.value = service.uiState.value.copy(
+                        bitwardenPinError = "PIN 不正确",
+                    )
+                }
+            },
+            onHideBitwardenSearch = {
+                service.uiState.value = service.uiState.value.copy(
+                    bitwardenSearchVisible = false,
+                    bitwardenSearchFocused = false,
+                    enterKeyText = "发送",
+                )
+                BitwardenSearchEditTextHolder.editText = null
+            },
+            onBitwardenSearchFocusChange = { focused ->
+                service.uiState.value = service.uiState.value.copy(
+                    bitwardenSearchFocused = focused,
+                    enterKeyText = if (focused) "搜索" else service.uiState.value.enterKeyText,
+                )
+            },
+            onShowBitwardenEdit = {
+                service.closeToolPanel()
+                val pkg = service.currentInputEditorInfo?.packageName
+                val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(service)
+                if (repo.state.value !is com.kingzcheung.xime.bitwarden.BitwardenUiState.Editing) {
+                    repo.beginCreate(pkg)
+                }
+                service.keyboardViewModel.closeOverlay()
+                service.uiState.value = service.uiState.value.copy(
+                    bitwardenSearchVisible = false,
+                    bitwardenSearchFocused = false,
+                    bitwardenDetailVisible = false,
+                    bitwardenEditVisible = true,
+                    bitwardenEditFocused = true,
+                    bitwardenEditField = BitwardenEditField.NAME,
+                    enterKeyText = "保存",
+                )
+            },
+            onHideBitwardenEdit = {
+                // 取消/保存：从详情进则回详情，否则回搜索
+                service.returnBitwardenAfterEdit()
+            },
+            onShowBitwardenDetail = { item ->
+                service.closeToolPanel()
+                val pkg = service.currentInputEditorInfo?.packageName
+                val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(service)
+                repo.beginView(item, pkg)
+                service.uiState.value = service.uiState.value.copy(
+                    bitwardenSearchVisible = false,
+                    bitwardenSearchFocused = false,
+                    bitwardenEditVisible = false,
+                    bitwardenDetailVisible = true,
+                    enterKeyText = "发送",
+                )
+            },
+            onHideBitwardenDetail = {
+                service.returnBitwardenDetailToSearch()
+            },
+            onBitwardenDetailEdit = {
+                val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(service)
+                repo.beginEditFromViewing()
+                service.uiState.value = service.uiState.value.copy(
+                    bitwardenDetailVisible = false,
+                    bitwardenEditVisible = true,
+                    bitwardenEditFocused = true,
+                    bitwardenEditField = BitwardenEditField.NAME,
+                    enterKeyText = "保存",
+                )
+            },
+            onEditBitwardenItem = { item ->
+                service.closeToolPanel()
+                val pkg = service.currentInputEditorInfo?.packageName
+                val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(service)
+                repo.beginEdit(item, pkg)
+                service.uiState.value = service.uiState.value.copy(
+                    bitwardenSearchVisible = false,
+                    bitwardenSearchFocused = false,
+                    bitwardenDetailVisible = false,
+                    bitwardenEditVisible = true,
+                    bitwardenEditFocused = true,
+                    bitwardenEditField = BitwardenEditField.NAME,
+                    enterKeyText = "保存",
+                )
+            },
+            onBitwardenEditFieldFocus = { field, customIndex, customIsName ->
+                service.uiState.value = service.uiState.value.copy(
+                    bitwardenEditFocused = true,
+                    bitwardenEditField = field,
+                    bitwardenEditCustomIndex = customIndex,
+                    bitwardenEditCustomIsName = customIsName,
+                    enterKeyText = "保存",
+                )
+            },
+            onBitwardenSync = {
+                val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(service)
+                service.serviceScope.launch(Dispatchers.IO) {
+                    val result = repo.syncNow()
+                    withContext(Dispatchers.Main) {
+                        val msg = if (result.isSuccess) {
+                            "同步完成"
+                        } else {
+                            result.exceptionOrNull()?.message?.takeIf { it.isNotBlank() } ?: "同步失败"
+                        }
+                        android.widget.Toast.makeText(service, msg, android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+            onBitwardenFill = { text -> service.commitBitwardenFill(text) },
+            onBitwardenCopy = { text -> service.copyBitwardenText(text) },
         )
     }
 }

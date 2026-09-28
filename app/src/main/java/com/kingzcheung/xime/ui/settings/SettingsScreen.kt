@@ -22,6 +22,7 @@ fun SettingsScreen(
         "schema" -> SettingsRoutes.Schema
         "plugins" -> SettingsRoutes.Plugins
         "favorite_stickers" -> SettingsRoutes.FavoriteStickers
+        "bitwarden" -> SettingsRoutes.Bitwarden
         else -> SettingsRoutes.Main
     }
 
@@ -57,6 +58,7 @@ fun SettingsScreen(
                 onNavigateToSpeechToText = { navController.navigate(SettingsRoutes.SpeechToText) },
                 onNavigateToAbout = { navController.navigate(SettingsRoutes.About) },
                 onNavigateToClipboardSync = { navController.navigate(SettingsRoutes.ClipboardSync) },
+                onNavigateToBitwarden = { navController.navigate(SettingsRoutes.Bitwarden) },
                 onNavigateToBackup = { navController.navigate(SettingsRoutes.Backup) }
             )
         }
@@ -225,6 +227,11 @@ fun SettingsScreen(
             ClipboardSyncSettingsContent(
                 onBack = { navController.popBackStack() },
                 onNavigateToPlugins = { navController.navigate(SettingsRoutes.Plugins) }
+            )
+        }
+        composable(SettingsRoutes.Bitwarden) {
+            BitwardenSettingsContent(
+                onBack = { navController.popBackStack() },
             )
         }
         composable(SettingsRoutes.Backup) {

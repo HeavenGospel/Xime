@@ -35,6 +35,7 @@ import androidx.compose.material.icons.twotone.KeyboardAlt
 import androidx.compose.material.icons.twotone.Palette
 import androidx.compose.material.icons.twotone.Storefront
 import androidx.compose.material.icons.twotone.Straighten
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.twotone.Sync
 import androidx.compose.material.icons.twotone.TableChart
 import androidx.compose.material.icons.twotone.ToggleOn
@@ -84,6 +85,7 @@ fun SettingsMainContent(
     onNavigateToSpeechToText: () -> Unit,
     onNavigateToAbout: () -> Unit,
     onNavigateToClipboardSync: () -> Unit = {},
+    onNavigateToBitwarden: () -> Unit = {},
     onNavigateToBackup: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -385,6 +387,18 @@ fun SettingsMainContent(
                         title = "剪贴板同步",
                         subtitle = "通过插件将剪贴板与远端设备双向同步",
                         onClick = onNavigateToClipboardSync,
+                        showArrow = true
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 56.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    SettingsItem(
+                        icon = Icons.Filled.VpnKey,
+                        title = "Bitwarden 密码库",
+                        subtitle = "工具栏搜索填充，新建关联当前 App",
+                        onClick = onNavigateToBitwarden,
                         showArrow = true
                     )
                 })

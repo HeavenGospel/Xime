@@ -36,6 +36,10 @@ data class KeyboardCallbacks(
     val onCursorMove: ((Int) -> Unit)? = null,
     val onGestureAction: ((GestureAction, String) -> Unit)? = null,
     val onUpdateToolbarButtons: ((List<String>) -> Unit)? = null,
+    /** 当前输入焦点所在应用包名（Bitwarden 关联 androidapp://）。 */
+    val hostPackageName: (() -> String?)? = null,
+    /** 打开设置页中的 Bitwarden 配置。 */
+    val onOpenBitwardenSettings: (() -> Unit)? = null,
     /**
      * 插件工具栏按钮点击（manifest 声明的 action，如 open_panel）触发。
      * 宿主据此打开对应插件的通用面板。
@@ -113,6 +117,29 @@ data class KeyboardCallbacks(
     val onQuickSendFormFocusChange: ((Boolean) -> Unit)? = null,
     /** 快捷发送表单"触发编码"输入框焦点变化（决定按键输入路由到编码框）。 */
     val onQuickSendCodeFocusChange: ((Boolean) -> Unit)? = null,
+    val onShowBitwardenSearch: (() -> Unit)? = null,
+    val onHideBitwardenSearch: (() -> Unit)? = null,
+    val onHideBitwardenPin: (() -> Unit)? = null,
+    val onBitwardenPinSubmit: ((String) -> Unit)? = null,
+    val onBitwardenSearchFocusChange: ((Boolean) -> Unit)? = null,
+    val onShowBitwardenEdit: (() -> Unit)? = null,
+    val onHideBitwardenEdit: (() -> Unit)? = null,
+    val onShowBitwardenDetail: ((com.kingzcheung.xime.bitwarden.VaultLoginItem) -> Unit)? = null,
+    val onHideBitwardenDetail: (() -> Unit)? = null,
+    val onBitwardenDetailEdit: (() -> Unit)? = null,
+    /** 从搜索列表直接编辑某条目。 */
+    val onEditBitwardenItem: ((com.kingzcheung.xime.bitwarden.VaultLoginItem) -> Unit)? = null,
+    val onBitwardenEditFieldFocus: ((
+        field: com.kingzcheung.xime.service.BitwardenEditField,
+        customIndex: Int,
+        customIsName: Boolean,
+    ) -> Unit)? = null,
+    /** 手动同步保险库。 */
+    val onBitwardenSync: (() -> Unit)? = null,
+    /** 填账号/密码到宿主光标（直写 InputConnection，不经面板重定向）。 */
+    val onBitwardenFill: ((String) -> Unit)? = null,
+    /** 复制到系统剪贴板（非填充）。 */
+    val onBitwardenCopy: ((String) -> Unit)? = null,
     /**
      * 全键盘（中文/英文）切离至其他键盘（数字/符号）时调用。
      * 服务层负责上屏首位候选词或待确认英文，再由键盘层切换布局。

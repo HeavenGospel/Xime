@@ -106,6 +106,7 @@ data class CandidateBarCallbacks(
     val onCandidateLongPress: ((Int) -> Unit)? = null
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CandidateBar(
     state: CandidateBarState,
@@ -242,7 +243,8 @@ fun CandidateBar(
         }
     }
     showInputTextRow = when (page) {
-        is KeyboardPage.Overlay -> page.route !is OverlayRoute.Clipboard
+        is KeyboardPage.Overlay -> page.route !is OverlayRoute.Clipboard &&
+            page.route !is OverlayRoute.Bitwarden
         else -> true
     }
 
@@ -552,16 +554,21 @@ fun CandidateBar(
                                             modifier = Modifier
                                                 .padding(horizontal = hPad)
                                                 .size(buttonSize)
-                                                .clickable(
+                                                .combinedClickable(
                                                     interactionSource = interactionSource,
                                                     indication = null,
-                                                    onClick = action.onClick
+                                                    onClick = action.onClick,
+                                                    onLongClick = action.onLongClick,
                                                 ),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             ToolbarButtonIcon(
                                                 item = action.item,
-                                                tint = if (isPressed) iconButtonTint.copy(alpha = 0.6f) else iconButtonTint,
+                                                tint = when {
+                                                    action.isActive -> visuals.accentColor
+                                                    isPressed -> iconButtonTint.copy(alpha = 0.6f)
+                                                    else -> iconButtonTint
+                                                },
                                                 modifier = Modifier.size(22.dp),
                                             )
                                         }

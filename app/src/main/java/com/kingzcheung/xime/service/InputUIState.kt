@@ -76,4 +76,19 @@ data class InputUIState(
     /** passive 纯展示节点树（getPanelState.ui，统一 UiNode 声明式模型）。 */
     val toolPanelUiNodes: List<com.kingzcheung.xime.plugin.core.config.UiNode>? = null,
     val clipboardSyncEnabled: Boolean = false,
+    /** Bitwarden PIN 校验面板（候选栏上方）。 */
+    val bitwardenPinVisible: Boolean = false,
+    val bitwardenPinFocused: Boolean = false,
+    val bitwardenPinError: String? = null,
+    /** Bitwarden 搜索面板（候选栏上方）。 */
+    val bitwardenSearchVisible: Boolean = false,
+    val bitwardenSearchFocused: Boolean = false,
+    /** Bitwarden 添加/编辑弹层。 */
+    val bitwardenEditVisible: Boolean = false,
+    val bitwardenEditFocused: Boolean = false,
+    val bitwardenEditField: BitwardenEditField = BitwardenEditField.NAME,
+    val bitwardenEditCustomIndex: Int = 0,
+    val bitwardenEditCustomIsName: Boolean = true,
+    /** Bitwarden 只读详情弹层。 */
+    val bitwardenDetailVisible: Boolean = false,
 )

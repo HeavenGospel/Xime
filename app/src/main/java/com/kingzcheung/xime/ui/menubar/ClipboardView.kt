@@ -25,7 +25,6 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCut
@@ -73,7 +72,6 @@ fun ClipboardView(
     viewModel: KeyboardViewModel,
     onSelectItem: (String) -> Unit,
     onSplitWords: (String, Long) -> Unit,
-    onBack: (() -> Unit)? = null,
     onClipboardTabChange: ((Int) -> Unit)? = null,
     bottomPaddingDp: Int = 0,
     modifier: Modifier = Modifier,
@@ -118,24 +116,6 @@ fun ClipboardView(
                 .padding(horizontal = if (isLandscape) 50.dp else 8.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(iconButtonContainer)
-                    .clickable { onBack?.invoke() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                    contentDescription = "关闭面板",
-                    tint = accentColor,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
             Box(
                 modifier = Modifier
                     .height(28.dp)

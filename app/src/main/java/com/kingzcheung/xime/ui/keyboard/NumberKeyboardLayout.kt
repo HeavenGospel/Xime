@@ -486,6 +486,30 @@ private fun NumberRows(
                         .fillMaxHeight()
                         .weight(0.8f),
                 ) {
+                    IconKeyButton(
+                        icon = rememberVectorPainter(Icons.Default.EmojiEmotions),
+                        onClick = { onKeyPress("emoji") },
+                        backgroundColor = specialKeyBackgroundColor,
+                        iconColor = specialKeyTextColor,
+                        modifier = Modifier.weight(1f),
+                        onPress = { onKeyPressDown?.invoke("emoji") },
+                        shadowEnabled = shadowEnabled,
+                        shadowElevation = shadowElevation,
+                        shadowShapeRadius = shadowShapeRadius,
+                    )
+
+                    KeyButton(
+                        text = "空格",
+                        onClick = { onKeyPress("space") },
+                        backgroundColor = specialKeyBackgroundColor,
+                        textColor = specialKeyTextColor,
+                        modifier = Modifier.weight(1f),
+                        onPress = { onKeyPressDown?.invoke("space") },
+                        shadowEnabled = shadowEnabled,
+                        shadowElevation = shadowElevation,
+                        shadowShapeRadius = shadowShapeRadius,
+                        fontSize = ctrlFontSize,
+                    )
                     SwipeableIconKeyButton(
                         icon = rememberVectorPainter(Icons.AutoMirrored.Filled.Backspace),
                         onClick = { onKeyPress("delete") },
@@ -505,30 +529,6 @@ private fun NumberRows(
                             onKeyPress("clear_composition")
                         },
                         onSwipeStateChange = onSwipeStateChange,
-                        shadowEnabled = shadowEnabled,
-                        shadowElevation = shadowElevation,
-                        shadowShapeRadius = shadowShapeRadius,
-                    )
-
-                    KeyButton(
-                        text = "空格",
-                        onClick = { onKeyPress("space") },
-                        backgroundColor = specialKeyBackgroundColor,
-                        textColor = specialKeyTextColor,
-                        modifier = Modifier.weight(1f),
-                        onPress = { onKeyPressDown?.invoke("space") },
-                        shadowEnabled = shadowEnabled,
-                        shadowElevation = shadowElevation,
-                        shadowShapeRadius = shadowShapeRadius,
-                        fontSize = ctrlFontSize,
-                    )
-                    IconKeyButton(
-                        icon = rememberVectorPainter(Icons.Default.EmojiEmotions),
-                        onClick = { onKeyPress("emoji") },
-                        backgroundColor = specialKeyBackgroundColor,
-                        iconColor = specialKeyTextColor,
-                        modifier = Modifier.weight(1f),
-                        onPress = { onKeyPressDown?.invoke("emoji") },
                         shadowEnabled = shadowEnabled,
                         shadowElevation = shadowElevation,
                         shadowShapeRadius = shadowShapeRadius,

@@ -96,6 +96,18 @@ data class KeyboardUiState(
     val toolPanelDisplay: String? = null,
     val toolPanelUiNodes: List<com.kingzcheung.xime.plugin.core.config.UiNode>? = null,
     val clipboardSyncEnabled: Boolean = false,
+    val bitwardenPinVisible: Boolean = false,
+    val bitwardenPinFocused: Boolean = false,
+    val bitwardenPinError: String? = null,
+    val bitwardenSearchVisible: Boolean = false,
+    val bitwardenSearchFocused: Boolean = false,
+    val bitwardenEditVisible: Boolean = false,
+    val bitwardenEditFocused: Boolean = false,
+    val bitwardenEditField: com.kingzcheung.xime.service.BitwardenEditField =
+        com.kingzcheung.xime.service.BitwardenEditField.NAME,
+    val bitwardenEditCustomIndex: Int = 0,
+    val bitwardenEditCustomIsName: Boolean = true,
+    val bitwardenDetailVisible: Boolean = false,
 )
 
 class KeyboardViewModel(application: Application) : AndroidViewModel(application) {
@@ -480,6 +492,16 @@ class KeyboardViewModel(application: Application) : AndroidViewModel(application
         val behind = if (current is KeyboardPage.Overlay) current.behind else current
         _page.value = KeyboardPage.Overlay(route, initialBackStack, behind)
         _syncViewState()
+    }
+
+    /** Level 3: 再点同一覆盖页则关闭，否则打开/切换到目标页（工具栏符号/剪贴板） */
+    fun toggleOverlay(route: OverlayRoute) {
+        val current = _page.value
+        if (current is KeyboardPage.Overlay && current.route == route) {
+            closeOverlay()
+        } else {
+            showOverlay(route)
+        }
     }
 
     /** Level 3: 在覆盖页面内推入子页 */

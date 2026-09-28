@@ -37,4 +37,5 @@ sealed interface OverlayRoute {
     data object CandidatePage : OverlayRoute
     data object Edit : OverlayRoute
     data object ToolPanel : OverlayRoute
+    data object Bitwarden : OverlayRoute
 }
