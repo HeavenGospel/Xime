@@ -12,7 +12,7 @@
 > 本仓库是 [ximeiorg/Xime](https://github.com/ximeiorg/Xime)（曦码官方 Android 输入法）的 **fork**，在上游基础上按个人使用习惯做了体验增强与功能补全。  
 > - 上游项目：[https://github.com/ximeiorg/Xime](https://github.com/ximeiorg/Xime)  
 > - 本 fork：[https://github.com/HeavenGospel/Xime](https://github.com/HeavenGospel/Xime)  
-> - 当前版本：**2.8.6**  
+> - 当前版本：**2.9.10**  
 > - 改动明细见：[docs/changelog-2026-09-session.md](docs/changelog-2026-09-session.md)
 
 官方文档与生态仍以原项目为准：[使用文档](https://ime.ximei.me) · [Windows](https://github.com/ximeiorg/winxime) · [Linux](https://github.com/ximeiorg/xime-wayland)
@@ -25,6 +25,28 @@
 
 以下为 fork 内陆续落地的改动（不完全随上游发版同步，以本仓库 Release / changelog 为准）。
 
+### Bitwarden / Vaultwarden 密码库
+
+在输入法内直接取号填密，对接官方 Bitwarden API（兼容自建 [Vaultwarden](https://github.com/dani-garcia/vaultwarden)）。
+
+| 功能 | 说明 |
+|------|------|
+| **工具栏入口** | 盾牌按钮打开搜索面板；再点关闭；可配置 PIN（关闭 / 每次打开 / 超时） |
+| **搜索与填充** | 按名称 / 账号 / 备注搜索；一键填账号、密码、TOTP 验证码到光标处 |
+| **匹配排序** | 精确 `androidapp://包名` 优先；应用名 / 域名模糊匹配次之；**本地置顶**始终高于匹配分 |
+| **详情与编辑** | 点条目进详情；可改名称、账号、密码、网站 URI、关联 App、TOTP、备注、自定义字段 |
+| **会话保持** | 用户密钥加密落盘，更新安装后一般无需重新登录（锁定 / 清除会话除外） |
+| **设置页** | 服务器预设或自建地址、邮箱、密码生成规则、PIN 等 |
+
+### 符号页与剪贴板（工具栏停靠）
+
+| 功能 | 说明 |
+|------|------|
+| **工具栏常驻** | 打开符号 / 剪贴板时候选工具栏不消失；内容铺在工具栏下方 |
+| **单击切换** | 再点同一工具栏按钮关闭；点另一个直接切换，无需面板内返回键 |
+| **符号页** | 竖屏约 **4×4** 可视网格；右侧操作列：返回 / 空格 / 删除 / 换行；分类 Tab 加高 |
+| **剪贴板** | 历史与快捷短语；选中上屏后关闭；可与工具栏快捷短语按钮联动 |
+
 ### 键盘与输入
 
 | 功能 | 说明 |
@@ -34,6 +56,7 @@
 | **中英标点** | 长按/上滑按中英文模式区分；配对引号走 Rime pair |
 | **长按选符** | 选中符号后不再误进拼音候选；滑动切换有震动 |
 | **方案菜单开关** | 显示当前状态，非默认高亮；切换后菜单不立刻关闭 |
+| **数字页布局** | 简拼进数字键盘时，表情与删除键位对调，更贴近常用习惯 |
 
 ### 按键自定义
 
@@ -55,6 +78,7 @@
 - 工具栏可左对齐 / 居中
 - 编辑模式：**长按拖拽排序**（可跨多格）、进入排序有震动
 - 非编辑模式记住横向滚动位置
+- 符号 / 剪贴板 / 密码库等按钮打开时可用 accent 高亮当前面板
 
 ### 表情与收藏
 
@@ -70,6 +94,7 @@
 - 方案包与个人词库**分开导入**
 - 个人词库：导入 + **导出当前方案 userdb 为 zip**
 - 附带工具：薄荷方案打包、薄荷 userdb → 简拼转换、Fcitx 手势 → `xime.custom.yaml`
+- 词库前缀联想、模糊拼音等体验增强（交互参考清风输入法）
 
 ### 手写
 
@@ -82,7 +107,7 @@
 继承自 [ximeiorg/Xime](https://github.com/ximeiorg/Xime)：
 
 - 五笔 86/98、拼音、混输等方案；方案市场 / 无线导入
-- QWERTY、T9、笔画、手写、数字（含计算器）、悬浮键盘
+- QWERTY、T9、笔画、手写、数字（含简单计算器）、悬浮键盘
 - 本地 / 在线语音识别、联想预测、插件市场
 - 剪贴板历史与同步、WebDAV 云备份、实体键盘候选栏
 - Material Design 3 多主题
@@ -128,7 +153,7 @@ cd Xime
 ./gradlew assembleRelease
 ```
 
-产物示例：`app/build/outputs/apk/release/Xime-2.8.6-arm64-v8a.apk`
+产物示例：`app/build/outputs/apk/release/Xime-2.9.10-arm64-v8a.apk`
 
 ## 文档
 
@@ -139,10 +164,13 @@ cd Xime
 
 - Kotlin · Jetpack Compose · Material Design 3
 - Rime (librime) · JNI
+- Bitwarden / Vaultwarden Identity & API（本 fork 密码库）
 
 ## 致谢
 
 - **[ximeiorg/Xime](https://github.com/ximeiorg/Xime)** — 原项目作者 [Kingz Cheung](https://github.com/kingzcheung) 及上游贡献者
+- **[Bitwarden](https://bitwarden.com/)** — 密码库协议与官方客户端生态；本 fork 按 Identity / API 对接取号填密
+- **[Vaultwarden](https://github.com/dani-garcia/vaultwarden)** — 兼容 Bitwarden API 的自建服务端实现，便于私有部署联调
 - [清风输入法 WindInput](https://github.com/huanfeng/WindInput) — 词库前缀联想、模糊音分组与码表交互等设计参考
 - [Rime](https://rime.im/) · [Trime](https://github.com/osfans/trime) · [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android)
 - [onnxruntime](https://github.com/microsoft/onnxruntime)

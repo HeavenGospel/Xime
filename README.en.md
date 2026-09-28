@@ -12,7 +12,7 @@
 > This is a **fork** of the official Android IME [ximeiorg/Xime](https://github.com/ximeiorg/Xime), with UX and feature enhancements for personal use.  
 > - Upstream: [https://github.com/ximeiorg/Xime](https://github.com/ximeiorg/Xime)  
 > - This fork: [https://github.com/HeavenGospel/Xime](https://github.com/HeavenGospel/Xime)  
-> - Version: **2.8.4**  
+> - Version: **2.9.10**  
 > - Change log (Chinese): [docs/changelog-2026-09-session.md](docs/changelog-2026-09-session.md)
 
 Official docs & ecosystem still follow upstream: [docs](https://ime.ximei.me) · [Windows](https://github.com/ximeiorg/winxime) · [Linux](https://github.com/ximeiorg/xime-wayland)
@@ -23,6 +23,28 @@ An Android Wubi / Pinyin IME built on [Rime](https://rime.im/), keeping upstream
 
 ## Fork improvements (vs upstream)
 
+### Bitwarden / Vaultwarden vault
+
+Fill credentials from inside the IME using the official Bitwarden API (compatible with self-hosted [Vaultwarden](https://github.com/dani-garcia/vaultwarden)).
+
+| Feature | Notes |
+|---------|--------|
+| **Toolbar entry** | Shield opens the search panel; tap again to close; optional PIN (off / every open / timeout) |
+| **Search & fill** | Search by name / username / notes; one-tap fill username, password, or TOTP at the cursor |
+| **Ranking** | Exact `androidapp://package` first; then app-label / domain fuzzy match; **local pin** always above match scores |
+| **Detail & edit** | Open detail from a row; edit name, credentials, website URI, linked app, TOTP, notes, custom fields |
+| **Session** | Encrypted user key on disk; usually no re-login after app updates (until lock / clear session) |
+| **Settings** | Cloud or self-hosted endpoints, email, password generator, PIN |
+
+### Symbol & clipboard (toolbar-docked)
+
+| Feature | Notes |
+|---------|--------|
+| **Toolbar stays** | Symbol / clipboard content appears under the candidate toolbar |
+| **Toggle** | Same toolbar button closes; another button switches panels (no in-panel back) |
+| **Symbol page** | ~**4×4** visible grid in portrait; side column: back / space / delete / enter; taller category tabs |
+| **Clipboard** | History & quick phrases; selecting an item commits and closes |
+
 ### Keyboard & input
 
 | Feature | Notes |
@@ -32,6 +54,7 @@ An Android Wubi / Pinyin IME built on [Rime](https://rime.im/), keeping upstream
 | **CN/EN punctuation** | Swipe / long-press follow mode; paired quotes via Rime |
 | **Long-press symbols** | No accidental Pinyin candidates; haptic when sliding options |
 | **Schema menu toggles** | Show current state; highlight non-default; menu stays open |
+| **Number layout** | From T9 number pad: emoji and delete positions swapped for habit |
 
 ### Key customization
 
@@ -48,6 +71,7 @@ An Android Wubi / Pinyin IME built on [Rime](https://rime.im/), keeping upstream
 ### Toolbar
 
 - Alignment options; long-press drag reorder; scroll position remembered
+- Active accent highlight for open symbol / clipboard / vault panels
 
 ### Stickers & emoji
 
@@ -60,6 +84,7 @@ An Android Wubi / Pinyin IME built on [Rime](https://rime.im/), keeping upstream
 
 - Schema packages vs personal `userdb` import separated
 - Personal dict export as zip; helper scripts for Mint / Fcitx conversion
+- Prefix association & fuzzy pinyin UX enhancements (inspired by WindInput)
 
 ### Handwriting
 
@@ -69,7 +94,7 @@ An Android Wubi / Pinyin IME built on [Rime](https://rime.im/), keeping upstream
 
 ## Upstream features (summary)
 
-Inherited from [ximeiorg/Xime](https://github.com/ximeiorg/Xime): Wubi / Pinyin schemas, T9, handwriting, voice, plugins, clipboard sync, WebDAV backup, MD3 themes, floating keyboard, and more.
+Inherited from [ximeiorg/Xime](https://github.com/ximeiorg/Xime): Wubi / Pinyin schemas, T9, handwriting, voice, plugins, clipboard sync, WebDAV backup, MD3 themes, floating keyboard, simple number-pad calculator, and more.
 
 ## Requirements
 
@@ -94,16 +119,27 @@ cd Xime
 ./gradlew assembleRelease
 ```
 
+Example artifact: `app/build/outputs/apk/release/Xime-2.9.10-arm64-v8a.apk`
+
 ## Docs
 
 - Fork changelog: [docs/changelog-2026-09-session.md](docs/changelog-2026-09-session.md)
 - Upstream: [https://ime.ximei.me](https://ime.ximei.me)
 
+## Stack
+
+- Kotlin · Jetpack Compose · Material Design 3
+- Rime (librime) · JNI
+- Bitwarden / Vaultwarden Identity & API (vault feature in this fork)
+
 ## Acknowledgments
 
 - **[ximeiorg/Xime](https://github.com/ximeiorg/Xime)** — [Kingz Cheung](https://github.com/kingzcheung) and upstream contributors
+- **[Bitwarden](https://bitwarden.com/)** — vault protocol and official client ecosystem; this fork fills credentials via Identity / API
+- **[Vaultwarden](https://github.com/dani-garcia/vaultwarden)** — Bitwarden-compatible self-hosted server used for private deployments
 - [WindInput](https://github.com/huanfeng/WindInput) — design reference for prefix association, fuzzy pinyin groups, and codetable interaction
 - [Rime](https://rime.im/) · [Trime](https://github.com/osfans/trime) · [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android)
+- [onnxruntime](https://github.com/microsoft/onnxruntime)
 
 ## License
 

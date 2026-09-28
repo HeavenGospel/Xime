@@ -158,6 +158,9 @@ git submodule update --init --recursive
 
 ## 致謝
 
+- [ximeiorg/Xime](https://github.com/ximeiorg/Xime) — 上游曦碼輸入法（本倉庫為其 fork，功能說明以 [README.md](README.md) 為準）
+- [Bitwarden](https://bitwarden.com/) — 密碼庫協議與官方客戶端生態
+- [Vaultwarden](https://github.com/dani-garcia/vaultwarden) — 相容 Bitwarden API 的自建服務端
 - [Rime](https://rime.im/) - 中州韻輸入法引擎
 - [清風輸入法 WindInput](https://github.com/huanfeng/WindInput) - 詞庫前綴聯想、模糊音分組與碼表交互等設計參考
 - [Trime](https://github.com/osfans/trime) - 同文輸入法，設定參考
