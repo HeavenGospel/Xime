@@ -39,6 +39,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -48,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -154,6 +156,8 @@ fun CandidateBar(
     // CandidateItem：horizontal 4.dp × 2
     val itemPaddingPx = with(density) { 8.dp.toPx() }
     val spacingPx = with(density) { 4.dp.toPx() }
+    // 测量与实绘（表情/扩展字/Medium 字重）常有偏差，留余量避免末词被裁切
+    val fitSafetyPx = with(density) { 4.dp.toPx() }
 
     val screenWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
     // 与 Column.padding(horizontal) 一致，勿再额外扣 16dp
@@ -178,6 +182,25 @@ fun CandidateBar(
             }
         }
     }
+    // 优先用 LazyRow 实测宽度；首帧用屏宽估算
+    var measuredRowWidthPx by remember { mutableFloatStateOf(0f) }
+    val estimatedRowWidthPx = (screenWidthPx - horizontalPadPx - rightSidePx).coerceAtLeast(0f)
+    val lazyRowWidthPx = (if (measuredRowWidthPx > 0f) measuredRowWidthPx else estimatedRowWidthPx)
+        .coerceAtLeast(0f)
+
+    val measureCandidateWidth: (String, Float) -> Float = remember(textMeasurer, candidateFontFamily) {
+        { text, sizeSp ->
+            textMeasurer.measure(
+                text = AnnotatedString(text),
+                // 与首选项 Medium 对齐，略偏保守，减少表情/扩展字量窄后裁切
+                style = TextStyle(
+                    fontSize = sizeSp.sp,
+                    fontWeight = FontWeight.Medium,
+                    fontFamily = candidateFontFamily,
+                ),
+            ).size.width.toFloat()
+        }
+    }
 
     val displayCandidates: List<String>
     val displayAssociation: List<String>
@@ -195,25 +218,19 @@ fun CandidateBar(
             showLeftIcon = true
         }
         is CandidateBarState.ChineseCandidates -> {
-            // 候选栏只放一屏内完整可见的词；超出的进「翻页」，不横向滑动。
-            val lazyRowWidthPx = (screenWidthPx - horizontalPadPx - rightSidePx).coerceAtLeast(0f)
+            // 候选栏只放一屏内完整可见的词；超出的进「更多」，不横向滑动。
             val fitted = remember(
-                s.candidates, s.comments, showComments, lazyRowWidthPx,
-                candidateTextSize, itemPaddingPx, spacingPx, textMeasurer, candidateFontFamily,
+                s.candidates, s.comments, showComments, lazyRowWidthPx, fitSafetyPx,
+                candidateTextSize, itemPaddingPx, spacingPx, measureCandidateWidth,
             ) {
                 fitCandidatesToWidth(
                     candidates = s.candidates,
                     comments = s.comments,
                     showComments = showComments,
-                    availablePx = lazyRowWidthPx,
+                    availablePx = (lazyRowWidthPx - fitSafetyPx).coerceAtLeast(0f),
                     itemPaddingPx = itemPaddingPx,
                     spacingPx = spacingPx,
-                    measureText = { text, sizeSp ->
-                        textMeasurer.measure(
-                            text = AnnotatedString(text),
-                            style = TextStyle(fontSize = sizeSp.sp, fontFamily = candidateFontFamily),
-                        ).size.width.toFloat()
-                    },
+                    measureText = measureCandidateWidth,
                     candidateTextSize = candidateTextSize.toFloat(),
                 )
             }
@@ -222,34 +239,25 @@ fun CandidateBar(
             hasAnyMore = fitted.texts.size < s.candidates.size || s.hasMore
             showLeftIcon = false
             displayAssociation = remember(
-                s.associationCandidates, fitted.texts, s.inputText, textMeasurer,
-                lazyRowWidthPx, candidateTextSize, itemPaddingPx, spacingPx,
+                s.associationCandidates, fitted.texts, s.inputText, measureCandidateWidth,
+                lazyRowWidthPx, fitSafetyPx, candidateTextSize, itemPaddingPx, spacingPx,
+                showComments, fitted.comments, density, textMeasurer, commentFontFamily,
             ) {
+                val assocAvail = (lazyRowWidthPx - fitSafetyPx).coerceAtLeast(0f)
                 if (fitted.texts.isEmpty()) {
                     fitCandidatesToWidth(
                         candidates = s.associationCandidates,
                         comments = emptyList(),
                         showComments = false,
-                        availablePx = lazyRowWidthPx,
+                        availablePx = assocAvail,
                         itemPaddingPx = itemPaddingPx,
                         spacingPx = spacingPx,
-                        measureText = { text, sizeSp ->
-                            textMeasurer.measure(
-                                text = AnnotatedString(text),
-                                style = TextStyle(fontSize = sizeSp.sp, fontFamily = candidateFontFamily),
-                            ).size.width.toFloat()
-                        },
+                        measureText = measureCandidateWidth,
                         candidateTextSize = candidateTextSize.toFloat(),
                     ).texts
                 } else {
-                    val measureText = { text: String ->
-                        textMeasurer.measure(
-                            text = AnnotatedString(text),
-                            style = TextStyle(fontSize = candidateTextSize.sp, fontFamily = candidateFontFamily)
-                        ).size.width.toFloat()
-                    }
                     val regularWidthPx = fitted.texts.mapIndexed { i, c ->
-                        var w = measureText(c) + itemPaddingPx
+                        var w = measureCandidateWidth(c, candidateTextSize.toFloat()) + itemPaddingPx
                         val comment = fitted.comments.getOrElse(i) { "" }
                         if (showComments && comment.isNotEmpty()) {
                             w += with(density) { 3.dp.toPx() } +
@@ -262,9 +270,10 @@ fun CandidateBar(
                                 ).size.width.toFloat()
                         }
                         w
-                    }.sum()
+                    }.sum() +
+                        (fitted.texts.size - 1).coerceAtLeast(0) * spacingPx
                     val dividerWidthPx = with(density) { 9.dp.toPx() }
-                    val availablePx = lazyRowWidthPx - regularWidthPx - dividerWidthPx
+                    val availablePx = assocAvail - regularWidthPx - dividerWidthPx
                     fitCandidatesToWidth(
                         candidates = s.associationCandidates,
                         comments = emptyList(),
@@ -272,19 +281,14 @@ fun CandidateBar(
                         availablePx = availablePx,
                         itemPaddingPx = itemPaddingPx,
                         spacingPx = spacingPx,
-                        measureText = { text, sizeSp ->
-                            textMeasurer.measure(
-                                text = AnnotatedString(text),
-                                style = TextStyle(fontSize = sizeSp.sp, fontFamily = candidateFontFamily),
-                            ).size.width.toFloat()
-                        },
+                        measureText = measureCandidateWidth,
                         candidateTextSize = candidateTextSize.toFloat(),
                     ).texts
                 }
             }
         }
         is CandidateBarState.AssociationOnly -> {
-            // @ 邮箱域名等纯联想：完整列表可左滑，不走「翻页」
+            // @ 邮箱域名等纯联想：完整列表可左滑，不走「更多」
             displayCandidates = emptyList()
             displayAssociation = s.candidates
             hasAnyMore = false
@@ -292,24 +296,18 @@ fun CandidateBar(
             displayComments = s.comments
         }
         is CandidateBarState.EnglishCandidates -> {
-            val lazyRowWidthPx = (screenWidthPx - horizontalPadPx - rightSidePx).coerceAtLeast(0f)
             val fitted = remember(
-                s.candidates, s.comments, showComments, lazyRowWidthPx,
-                candidateTextSize, itemPaddingPx, spacingPx, textMeasurer, candidateFontFamily,
+                s.candidates, s.comments, showComments, lazyRowWidthPx, fitSafetyPx,
+                candidateTextSize, itemPaddingPx, spacingPx, measureCandidateWidth,
             ) {
                 fitCandidatesToWidth(
                     candidates = s.candidates,
                     comments = s.comments,
                     showComments = showComments,
-                    availablePx = lazyRowWidthPx,
+                    availablePx = (lazyRowWidthPx - fitSafetyPx).coerceAtLeast(0f),
                     itemPaddingPx = itemPaddingPx,
                     spacingPx = spacingPx,
-                    measureText = { text, sizeSp ->
-                        textMeasurer.measure(
-                            text = AnnotatedString(text),
-                            style = TextStyle(fontSize = sizeSp.sp, fontFamily = candidateFontFamily),
-                        ).size.width.toFloat()
-                    },
+                    measureText = measureCandidateWidth,
                     candidateTextSize = candidateTextSize.toFloat(),
                 )
             }
@@ -508,7 +506,12 @@ fun CandidateBar(
             }
 
             LazyRow(
-                modifier = if (state is CandidateBarState.Idle) Modifier else Modifier.weight(1f),
+                modifier = (if (state is CandidateBarState.Idle) Modifier else Modifier.weight(1f))
+                    .onSizeChanged { size ->
+                        if (size.width > 0 && measuredRowWidthPx != size.width.toFloat()) {
+                            measuredRowWidthPx = size.width.toFloat()
+                        }
+                    },
                 state = candidateListState,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 userScrollEnabled = allowCandidateSwipe,
@@ -818,7 +821,7 @@ fun CandidateItem(
             fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
             maxLines = 1,
             softWrap = false,
-            overflow = TextOverflow.Visible,
+            overflow = TextOverflow.Clip,
             fontFamily = candidateFontFamily
         )
         if (comment.isNotEmpty()) {
@@ -830,7 +833,7 @@ fun CandidateItem(
                 fontWeight = FontWeight.Normal,
                 maxLines = 1,
                 softWrap = false,
-                overflow = TextOverflow.Visible,
+                overflow = TextOverflow.Clip,
                 fontFamily = commentFontFamily
             )
         }
@@ -928,7 +931,7 @@ private data class FittedCandidates(
     val comments: List<String>,
 )
 
-/** 按可用宽度装入完整候选（含词注），装不下的留给「翻页」。至少保留第 1 个。 */
+/** 按可用宽度装入完整候选（含词注），装不下的留给「更多」。至少保留第 1 个。 */
 private fun fitCandidatesToWidth(
     candidates: List<String>,
     comments: List<String>,
@@ -955,11 +958,13 @@ private fun fitCandidatesToWidth(
             width += commentGapPx + measureText(comment, commentSize)
         }
         if (texts.isNotEmpty()) width += spacingPx
-        if (texts.isNotEmpty() && usedPx + width > availablePx) break
-        // 首词过宽也展示（完整可见优先于严格裁切）
+        // 非首词：装不下就不放，避免最右侧半截字
+        if (texts.isNotEmpty() && usedPx + width > availablePx + 0.5f) break
         usedPx += width
         texts.add(text)
         fittedComments.add(comment)
+        // 首词已超宽：只留这一个，其余进更多
+        if (i == 0 && usedPx > availablePx + 0.5f) break
     }
     return FittedCandidates(texts, fittedComments)
 }

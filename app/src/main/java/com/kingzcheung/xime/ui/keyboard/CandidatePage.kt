@@ -98,7 +98,8 @@ fun CandidatePage(
     var allItems by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var indexBase by remember { mutableIntStateOf(0) }
     var assocMode by remember { mutableStateOf(false) }
-    var loading by remember { mutableStateOf(true) }
+    // 有栏上种子候选时不转圈；仅在完全无数据、只能等全量时才 loading
+    var loading by remember { mutableStateOf(false) }
     var pageIndex by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(
@@ -108,29 +109,43 @@ fun CandidatePage(
         state.barVisibleCount,
         callbacks.onLoadAllCandidates,
     ) {
-        loading = true
         pageIndex = 0
-        allItems = emptyList()
         val barSkip = if (state.barVisibleCount >= 0) state.barVisibleCount else state.candidates.size
         indexBase = barSkip
         assocMode = state.candidates.isEmpty() && state.associationCandidates.isNotEmpty()
-        if (assocMode) {
-            allItems = state.associationCandidates
+
+        // 立刻用当前页已有候选（去掉栏上已显示）铺第一屏，避免转圈
+        val seed: List<Pair<String, String>> = if (assocMode) {
+            state.associationCandidates
                 .drop(barSkip.coerceAtLeast(0))
                 .map { it to "" }
+        } else {
+            state.candidates
+                .drop(barSkip.coerceAtLeast(0))
+                .mapIndexed { i, text ->
+                    text to state.candidateComments.getOrElse(barSkip + i) { "" }
+                }
+        }
+        allItems = seed
+
+        if (assocMode) {
             loading = false
             return@LaunchedEffect
         }
         val loader = callbacks.onLoadAllCandidates
         if (loader == null) {
-            allItems = state.candidates
-                .drop(barSkip)
-                .mapIndexed { i, text -> text to state.candidateComments.getOrElse(barSkip + i) { "" } }
             loading = false
             return@LaunchedEffect
         }
+        // 无种子才转圈；有种子则后台静默补全
+        loading = seed.isEmpty()
         val loaded = withContext(Dispatchers.Default) { loader() }
-        allItems = if (loaded.size > barSkip) loaded.drop(barSkip) else emptyList()
+        val full = if (loaded.size > barSkip) loaded.drop(barSkip) else emptyList()
+        if (full.isNotEmpty()) {
+            allItems = full
+        } else if (seed.isEmpty()) {
+            allItems = emptyList()
+        }
         loading = false
     }
 
