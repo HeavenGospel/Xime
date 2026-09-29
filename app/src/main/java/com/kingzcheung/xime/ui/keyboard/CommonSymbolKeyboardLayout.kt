@@ -124,7 +124,10 @@ fun CommonSymbolKeyboardLayout(
         keyboardWidth = keyboardBounds.width,
     )
 
-    CompositionLocalProvider(LocalKeyCornerRadius provides keyCornerRadius) {
+    CompositionLocalProvider(
+        LocalKeyCornerRadius provides keyCornerRadius,
+        LocalKeyboardBoundsInRoot provides keyboardBounds,
+    ) {
     Box(
         modifier = modifier
             .fillMaxWidth()

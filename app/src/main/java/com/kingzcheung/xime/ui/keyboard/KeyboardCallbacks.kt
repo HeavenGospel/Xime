@@ -33,6 +33,10 @@ data class KeyboardCallbacks(
     val onVoiceStickyToggle: (() -> Unit)? = null,
     val onPageDown: (() -> Unit)? = null,
     val onPageUp: (() -> Unit)? = null,
+    /** 「更多」候选页：异步收集当前输入下全部候选（text, comment）。 */
+    val onCollectAllCandidates: (suspend () -> List<Pair<String, String>>)? = null,
+    /** 「更多」候选页点选：全局下标 + 文本/注释。 */
+    val onExpandedCandidateSelect: ((index: Int, text: String, comment: String) -> Unit)? = null,
     val onCursorMove: ((Int) -> Unit)? = null,
     val onGestureAction: ((GestureAction, String) -> Unit)? = null,
     val onUpdateToolbarButtons: ((List<String>) -> Unit)? = null,

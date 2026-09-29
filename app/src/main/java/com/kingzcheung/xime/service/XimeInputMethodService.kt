@@ -1006,12 +1006,40 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     }
 
     internal fun closeBitwardenSearch() {
-        val wasOpen = uiState.value.bitwardenSearchVisible
+        val wasOpen = uiState.value.bitwardenSearchVisible ||
+            uiState.value.bitwardenDetailVisible ||
+            uiState.value.bitwardenEditVisible
         uiState.value = uiState.value.copy(
             bitwardenSearchVisible = false,
             bitwardenSearchFocused = false,
         )
         BitwardenSearchEditTextHolder.editText = null
+        if (wasOpen) invalidateBitwardenPinIfEveryOpen()
+    }
+
+    /**
+     * 仅隐藏 Bitwarden 面板 UI，保留仓库里的 Viewing / Editing / query，
+     * 下次打开可回到详情或编辑（与搜索词记忆一致）。
+     */
+    internal fun hideBitwardenPanels() {
+        val wasOpen = uiState.value.bitwardenSearchVisible ||
+            uiState.value.bitwardenDetailVisible ||
+            uiState.value.bitwardenEditVisible ||
+            uiState.value.bitwardenPinVisible
+        uiState.value = uiState.value.copy(
+            bitwardenSearchVisible = false,
+            bitwardenSearchFocused = false,
+            bitwardenDetailVisible = false,
+            bitwardenEditVisible = false,
+            bitwardenEditFocused = false,
+            bitwardenPinVisible = false,
+            bitwardenPinFocused = false,
+            bitwardenPinError = null,
+            enterKeyText = "发送",
+        )
+        BitwardenSearchEditTextHolder.editText = null
+        BitwardenPinEditTextHolder.editText = null
+        BitwardenEditFormHolders.clear()
         if (wasOpen) invalidateBitwardenPinIfEveryOpen()
     }
 
@@ -1033,26 +1061,55 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         BitwardenPinEditTextHolder.editText = null
     }
 
-    /** PIN 通过后打开搜索列表。 */
+    /**
+     * 打开 Bitwarden 面板：若仓库仍是 Viewing/Editing 则恢复详情/编辑，
+     * 否则打开搜索（保留 query / 滚动）。
+     */
     internal fun openBitwardenSearchPanel() {
         closeBitwardenPin()
-        closeBitwardenEdit()
         closeToolPanel()
         keyboardViewModel.closeOverlay()
-        uiState.value = uiState.value.copy(
-            showQuickSendForm = false,
-            bitwardenSearchVisible = true,
-            bitwardenSearchFocused = true,
-            bitwardenEditVisible = false,
-            bitwardenDetailVisible = false,
-            enterKeyText = "搜索",
-        )
         val pkg = currentInputEditorInfo?.packageName
-        com.kingzcheung.xime.bitwarden.BitwardenVaultRepository
-            .getInstance(this)
-            .refreshHost(pkg)
+        val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(this)
+        repo.refreshHost(pkg)
+        when (repo.state.value) {
+            is com.kingzcheung.xime.bitwarden.BitwardenUiState.Viewing -> {
+                uiState.value = uiState.value.copy(
+                    showQuickSendForm = false,
+                    bitwardenSearchVisible = false,
+                    bitwardenSearchFocused = false,
+                    bitwardenDetailVisible = true,
+                    bitwardenEditVisible = false,
+                    bitwardenEditFocused = false,
+                    enterKeyText = "发送",
+                )
+            }
+            is com.kingzcheung.xime.bitwarden.BitwardenUiState.Editing -> {
+                uiState.value = uiState.value.copy(
+                    showQuickSendForm = false,
+                    bitwardenSearchVisible = false,
+                    bitwardenSearchFocused = false,
+                    bitwardenDetailVisible = false,
+                    bitwardenEditVisible = true,
+                    bitwardenEditFocused = true,
+                    bitwardenEditField = BitwardenEditField.NAME,
+                    enterKeyText = "保存",
+                )
+            }
+            else -> {
+                uiState.value = uiState.value.copy(
+                    showQuickSendForm = false,
+                    bitwardenSearchVisible = true,
+                    bitwardenSearchFocused = true,
+                    bitwardenEditVisible = false,
+                    bitwardenDetailVisible = false,
+                    enterKeyText = "搜索",
+                )
+            }
+        }
     }
 
+    /** 真正离开详情：取消 Viewing 并隐藏（详情页点「返回」用）。 */
     internal fun closeBitwardenDetail() {
         val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(this)
         if (repo.state.value is com.kingzcheung.xime.bitwarden.BitwardenUiState.Viewing) {
@@ -1061,6 +1118,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         uiState.value = uiState.value.copy(bitwardenDetailVisible = false)
     }
 
+    /** 真正离开编辑：取消 Editing 并隐藏（非「返回上一层」路径用）。 */
     internal fun closeBitwardenEdit() {
         val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(this)
         if (repo.state.value is com.kingzcheung.xime.bitwarden.BitwardenUiState.Editing) {
@@ -1148,6 +1206,31 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             predictionManager.recordInput(text)
         }
         closeToolPanel()
+    }
+
+    /**
+     * 按下 @ / ＠：联想栏展示邮箱域名（不依赖方案 punctuator）。
+     * 上滑、符号面板、主键盘短按均应走此入口。
+     */
+    internal fun showEmailAtDomainCandidates() {
+        val hadComposition = candidateState.value.isComposing ||
+            candidateState.value.inputText.isNotEmpty()
+        if (hadComposition) {
+            rimeEngine.clearComposition()
+        }
+        // 取消在途联想回填，避免迟到结果冲掉域名列表
+        predictionManager.invalidatePendingPredictions()
+        candidateState.value = candidateState.value.copy(
+            pendingEnglishText = "",
+            associationCandidates = ImeKeyRouter.EMAIL_AT_DOMAIN_CANDIDATES,
+            candidates = emptyList(),
+            candidateComments = emptyList(),
+            isComposing = false,
+            inputText = "",
+            preeditText = "",
+            candidateActions = emptyList(),
+            isShowingRecentClipboard = false,
+        )
     }
 
     /**
@@ -2262,11 +2345,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             uiState.value.bitwardenDetailVisible ||
             uiState.value.bitwardenPinVisible
         ) {
-            closeBitwardenSearch()
-            closeBitwardenDetail()
-            closeBitwardenEdit()
-            closeBitwardenPin()
-            uiState.value = uiState.value.copy(enterKeyText = "发送")
+            // 仅隐藏 UI，保留 Viewing/Editing，下次打开可恢复
+            hideBitwardenPanels()
         }
     }
 

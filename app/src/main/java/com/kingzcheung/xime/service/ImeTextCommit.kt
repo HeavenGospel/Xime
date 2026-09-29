@@ -298,6 +298,11 @@ internal class ImeTextCommit(private val service: XimeInputMethodService) {
     }
 
     internal fun commitClipboardText(text: String) {
+        // 上滑/长按/符号面板直达上屏：@ 统一弹出邮箱域名，不直接落盘
+        if (text == "@" || text == "＠") {
+            service.showEmailAtDomainCandidates()
+            return
+        }
         // 上滑/长按符号直达上屏：同步清掉编码，避免松手竞态里补发的字母又挂上候选
         if (service.candidateState.value.isComposing) {
             service.rimeEngine.clearComposition()

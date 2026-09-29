@@ -442,7 +442,7 @@ public:
         if (!rime || !session_id_) return false;
         RIME_STRUCT(RimeContext, context);
         if (rime->get_context(session_id_, &context)) {
-            bool result = context.menu.page_no < context.menu.page_no + 1;
+            bool result = !context.menu.is_last_page;
             rime->free_context(&context);
             return result;
         }

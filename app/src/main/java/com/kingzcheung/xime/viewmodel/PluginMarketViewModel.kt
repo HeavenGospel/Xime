@@ -160,6 +160,8 @@ class PluginMarketViewModel(application: Application) : AndroidViewModel(applica
                     SettingsPreferences.setPluginEnabled(context, pluginId, true)
                     PluginManager.setPluginEnabled(pluginId, true)
                     PluginManager.launchPlugin(pluginId)
+                    // 表情类插件：立刻刷新分类流，避免输入法侧仍是旧列表
+                    com.kingzcheung.xime.plugin.ExtensionManager.loadEmojiDataFromPlugins(context)
                 }
             }
             // 刷新已安装状态（含版本号，供 hasUpdate 判断）

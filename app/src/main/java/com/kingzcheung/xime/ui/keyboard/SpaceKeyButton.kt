@@ -121,7 +121,7 @@ fun SpaceKeyButton(
             Text(
                 text = schemaName,
                 color = textColor,
-                fontSize = 14.sp,
+                fontSize = (14f * LocalKeycapTextScale.current).sp,
                 fontWeight = FontWeight.Normal,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
@@ -131,7 +131,7 @@ fun SpaceKeyButton(
             Text(
                 text = "空格",
                 color = textColor.copy(alpha = 0.3f),
-                fontSize = 10.sp,
+                fontSize = (10f * LocalKeycapTextScale.current).sp,
                 fontWeight = FontWeight.Normal,
                 textAlign = TextAlign.Start,
                 maxLines = 1,

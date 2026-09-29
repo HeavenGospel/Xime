@@ -52,7 +52,24 @@ class PluginsSettingsViewModel(application: Application) : AndroidViewModel(appl
             }
             when (val result = ImportManager.import(context, uri)) {
                 is ImportManager.ImportResult.Plugin -> {
-                    PluginManager.loadEnabledPlugins()
+                    val id = result.pluginInfo?.id
+                    if (id != null) {
+                        // 市场外导入的表情插件默认 XML 为禁用，这里自动启用并加载
+                        if (result.pluginInfo?.category ==
+                            com.kingzcheung.xime.plugin.core.model.PluginCategory.EMOJI
+                        ) {
+                            SettingsPreferences.setPluginEnabled(context, id, true)
+                            withContext(Dispatchers.IO) {
+                                PluginManager.setPluginEnabled(id, true)
+                                PluginManager.launchPlugin(id)
+                                com.kingzcheung.xime.plugin.ExtensionManager.loadEmojiDataFromPlugins(context)
+                            }
+                        } else {
+                            PluginManager.loadEnabledPlugins()
+                        }
+                    } else {
+                        PluginManager.loadEnabledPlugins()
+                    }
                     refreshPlugins()
                     _importMessage.value = "插件「${result.pluginInfo?.name ?: ""}」安装成功"
                 }

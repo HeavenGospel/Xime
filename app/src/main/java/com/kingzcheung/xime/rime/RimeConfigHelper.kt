@@ -324,13 +324,17 @@ object RimeConfigHelper {
         val target = File(targetDir, ASSETS_DEFAULT_CUSTOM)
         val pageSize = SettingsPreferences.getPageSize(context).coerceAtLeast(1)
         try {
-            if (!target.exists()) {
+            // 旧安装可能仍是 "@": "@" / "＠"；缺邮箱域名列表时用内置模板覆盖。
+            // schema_list 由随后的 applyEnabledSchemasToDefaultYaml 写回。
+            val needsEmailAtPatch = !target.exists() ||
+                !target.readText().contains("@qq.com")
+            if (needsEmailAtPatch) {
                 copyAssetFile(context, ASSETS_DEFAULT_CUSTOM, target)
-                // 模板基线（20）与用户设置不一致时（如 slider 调过）以设置为准
                 val aligned = patchDefaultCustomContent(target.readText(), pageSize)
                 if (aligned != null) {
                     target.writeText(aligned)
                 }
+                Log.i(TAG, "Synced ${target.name} (email @ domains)")
                 return
             }
             val patched = patchDefaultCustomContent(target.readText(), pageSize) ?: return

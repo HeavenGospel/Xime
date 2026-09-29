@@ -14,7 +14,7 @@ patch:
 
   # Menu
   menu:
-    page_size: 20                   # 候选词数量（手机屏一屏放得下，PC 版默认 5 太短）
+    page_size: 50                   # 引擎拉取数；更多页按区域铺满，不由用户设置
   switcher:
     hotkeys:        # 弹出菜单的快捷键
       - "Control+0"
@@ -104,7 +104,14 @@ patch:
       "=": "＝"
       ">": ["》", "〉", "»", "›"]
       "?": {commit: "？"}
-      "@": "＠"
+      "@":
+        - "@"
+        - "@qq.com"
+        - "@163.com"
+        - "@126.com"
+        - "@gmail.com"
+        - "@outlook.com"
+        - "@foxmail.com"
       "[": ["「", "【", "〔", "［"]
       "\\": ["、", "＼"]
       "]": ["」", "】", "〕", "］"]
@@ -137,7 +144,14 @@ patch:
       "=": "="
       ">": {commit: "》"}
       "?": {commit: "？"}
-      "@": "@"
+      "@":
+        - "@"
+        - "@qq.com"
+        - "@163.com"
+        - "@126.com"
+        - "@gmail.com"
+        - "@outlook.com"
+        - "@foxmail.com"
       "[": {commit: "【"}
       "\\": {commit: "、"}
       "]": {commit: "】"}

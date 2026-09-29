@@ -18,18 +18,34 @@ class LuaEmojiPluginAdapter(
 
     /**
      * 统一的候选项解析（emoji 与 tool 的 items 共用同一协议 schema `{id, text, insertText?, imageUrl?}`）。
+     *
+     * 兼容两套 Lua 签名：
+     * - 新：`getEmojis({ category, keyword, topK })`
+     * - 旧（市场 kaomoji-2.1.0 等）：`getEmojis(category, searchText, topK)`
+     * 旧包收到 table 时会因 `searchText/topK` 为 nil 而报错返回空，再回退位置参数。
      */
     override suspend fun getEmojis(query: EmojiQuery): List<PluginResultItem> =
         withContext(Dispatchers.IO) {
-            val args = LuaTable()
-            args.set("category", LuaValue.valueOf(query.category ?: ""))
-            args.set("keyword", LuaValue.valueOf(query.keyword ?: ""))
-            args.set("topK", LuaValue.valueOf(query.topK))
-            val result = runtime.call(
+            val category = query.category ?: ""
+            val keyword = query.keyword ?: ""
+            val topK = query.topK.coerceAtLeast(1)
+
+            val tableArgs = LuaTable()
+            tableArgs.set("category", LuaValue.valueOf(category))
+            tableArgs.set("keyword", LuaValue.valueOf(keyword))
+            tableArgs.set("topK", LuaValue.valueOf(topK))
+            val tableResult = runtime.call(LuaPluginContract.FN_GET_EMOJIS, tableArgs)
+            val fromTable = parseResultItems(tableResult, "getEmojis 返回")
+            if (fromTable.isNotEmpty()) return@withContext fromTable
+
+            // 旧版位置参数：getEmojis(category, searchText, topK)
+            val legacyResult = runtime.call(
                 LuaPluginContract.FN_GET_EMOJIS,
-                args
+                LuaValue.valueOf(category),
+                LuaValue.valueOf(keyword),
+                LuaValue.valueOf(topK),
             )
-            parseResultItems(result, "getEmojis 返回")
+            parseResultItems(legacyResult, "getEmojis(legacy) 返回")
         }
 
     override suspend fun getCategories(): List<String> = withContext(Dispatchers.IO) {

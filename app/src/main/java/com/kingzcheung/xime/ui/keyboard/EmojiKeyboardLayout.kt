@@ -147,6 +147,17 @@ fun EmojiKeyboardLayout(
         pluginCategories.groupBy { it.pluginId ?: it.name }.entries.toList()
     }
 
+    // 切到插件 Tab 且内容为空时强制再拉一次（装完立刻打开的常见路径）
+    LaunchedEffect(selectedTopTabIndex, pluginGroupEntries) {
+        if (selectedTopTabIndex < topTabPluginBase) return@LaunchedEffect
+        val groupIdx = selectedTopTabIndex - topTabPluginBase
+        if (groupIdx !in pluginGroupEntries.indices) return@LaunchedEffect
+        val cats = pluginGroupEntries[groupIdx].value
+        if (cats.any { it.emojiItems.isNullOrEmpty() }) {
+            ExtensionManager.loadEmojiDataFromPlugins(context)
+        }
+    }
+
     // 恢复上次顶栏 / 子分类
     LaunchedEffect(pluginGroupEntries, displayBuiltinCategories.size) {
         if (tabMemoryReady) return@LaunchedEffect
@@ -446,13 +457,33 @@ fun EmojiKeyboardLayout(
                 val defaultCols = if (hasImages) 6 else emojiColumns
                 val columns = if (category.layoutColumns > 0) category.layoutColumns else defaultCols
                 val itemHeightDp = if (category.layoutItemHeightDp > 0) category.layoutItemHeightDp
-                    else (if (hasImages) 60 else 40)
+                    else (if (hasImages) 60 else 48)
 
                 // 行分组缓存：chunked 每次重组重算会产生大量临时列表，
                 // remember 后仅在数据/列数变化时重建
                 val emojiRows = remember(category.emojiItems, columns) {
                     category.emojiItems.chunked(columns)
                 }
+                if (emojiRows.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "暂无表情内容",
+                                color = textColor.copy(alpha = 0.5f),
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = "可点右下角「设置」检查插件是否已启用",
+                                color = textColor.copy(alpha = 0.35f),
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                        }
+                    }
+                } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     // 图片表情行间距与列间距(6dp)对齐；文本表情保持紧凑 2dp
@@ -510,6 +541,7 @@ fun EmojiKeyboardLayout(
                             }
                         }
                     }
+                }
                 }
             } else if (category.emojis.isEmpty()) {
                 // 最近使用为空时的占位提示
@@ -963,7 +995,7 @@ fun PluginEmojiButton(
         } else {
             Text(
                 text = emojiItem.text,
-                fontSize = 12.sp,
+                fontSize = if (emojiItem.text.length <= 6) 16.sp else 13.sp,
                 color = contentColor,
                 textAlign = TextAlign.Center,
                 maxLines = 2,

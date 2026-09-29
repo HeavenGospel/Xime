@@ -51,6 +51,62 @@ class LuaScriptRuntimeTest {
     }
 
     @Test
+    fun `legacy getEmojis positional args still return items`() {
+        // 市场 kaomoji-2.1.0：getEmojis(category, searchText, topK)
+        val dir = File("build/lua-kaomoji-legacy")
+        val runtime = runtimeFor(
+            """
+            local plugin = {}
+            local kaomojis = { "(ﾟ∀ﾟ)", "(`3´)", "(ゝ∀･)" }
+            function plugin.getCategories()
+                return { "颜文字" }
+            end
+            function plugin.getEmojis(category, searchText, topK)
+                local list = {}
+                for i, k in ipairs(kaomojis) do
+                    if searchText == "" or string.find(k, searchText, 1, true) then
+                        table.insert(list, { id = "kaomoji_" .. (i - 1), text = k })
+                    end
+                    if #list >= topK then break end
+                end
+                return list
+            end
+            return plugin
+            """.trimIndent(),
+            dir
+        )
+        assertTrue(runtime.load())
+
+        // 新宿主传 table 时旧脚本会失败/空；位置参数应成功
+        val tableCall = runtime.call(
+            "getEmojis",
+            org.luaj.vm2.LuaValue.tableOf(
+                arrayOf(
+                    org.luaj.vm2.LuaValue.valueOf("keyword"),
+                    org.luaj.vm2.LuaValue.valueOf(""),
+                    org.luaj.vm2.LuaValue.valueOf("topK"),
+                    org.luaj.vm2.LuaValue.valueOf(10)
+                )
+            )
+        )
+        assertTrue(
+            "旧签名收到 table 时通常失败或空",
+            tableCall.isnil() || LuaScriptRuntime.tableToList(tableCall).isEmpty()
+        )
+
+        val legacy = LuaScriptRuntime.tableToList(
+            runtime.call(
+                "getEmojis",
+                org.luaj.vm2.LuaValue.valueOf("颜文字"),
+                org.luaj.vm2.LuaValue.valueOf(""),
+                org.luaj.vm2.LuaValue.valueOf(10)
+            )
+        )
+        assertEquals(3, legacy.size)
+        assertEquals("kaomoji_0", LuaScriptRuntime.tableToMap(legacy[0])["id"]?.tojstring())
+    }
+
+    @Test
     fun `sandbox blocks os io and arbitrary require`() {
         val dir = File("build/lua-kaomoji-test")
         dir.mkdirs()

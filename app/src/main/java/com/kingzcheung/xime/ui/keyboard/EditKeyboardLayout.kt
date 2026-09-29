@@ -131,7 +131,8 @@ fun EditKeyboardLayout(
             SideButtonGrid(
                 items = listOf(
                     "复制" to "copy", "粘贴" to "paste",
-                    "全选" to "select_all", "剪切" to "cut"
+                    "全选" to "select_all", "全选复制" to "copy_all",
+                    "剪切" to "cut"
                 ),
                 columns = if (isLandscape) 2 else 1,
                 onAction = onAction,

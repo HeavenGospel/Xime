@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.Key
@@ -37,8 +38,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +59,7 @@ import com.kingzcheung.xime.bitwarden.BitwardenVaultRepository
 import com.kingzcheung.xime.bitwarden.VaultLoginItem
 import com.kingzcheung.xime.service.BitwardenSearchEditTextHolder
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 /** 搜索 / 详情 / 编辑共用高度，与 XimeInputMethodService 撑高一致。 */
 internal const val BITWARDEN_PANEL_HEIGHT = 280
@@ -120,6 +124,13 @@ fun BitwardenSearchPanel(
                         initialFirstVisibleItemIndex = repository.listScrollIndex,
                         initialFirstVisibleItemScrollOffset = repository.listScrollOffset,
                     )
+                    val listScope = rememberCoroutineScope()
+                    val showScrollToTop by remember {
+                        derivedStateOf {
+                            listState.firstVisibleItemIndex > 0 ||
+                                listState.firstVisibleItemScrollOffset > 0
+                        }
+                    }
                     LaunchedEffect(listState) {
                         snapshotFlow {
                             listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
@@ -191,6 +202,22 @@ fun BitwardenSearchPanel(
                                     .clickable(onClick = onAdd)
                                     .padding(4.dp),
                             )
+                            if (showScrollToTop) {
+                                Icon(
+                                    imageVector = Icons.Filled.KeyboardArrowUp,
+                                    contentDescription = "回到顶部",
+                                    tint = accentColor,
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clickable {
+                                            listScope.launch {
+                                                listState.animateScrollToItem(0)
+                                                repository.setListScroll(0, 0)
+                                            }
+                                        }
+                                        .padding(4.dp),
+                                )
+                            }
                             Icon(
                                 imageVector = Icons.Outlined.Sync,
                                 contentDescription = "同步",

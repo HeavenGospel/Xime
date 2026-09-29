@@ -107,9 +107,23 @@ object SettingsPreferences {
     private const val KEY_INPUT_TEXT_LOCATION = "input_text_location"
     private const val KEY_PAGE_SIZE = "page_size"
     private const val KEY_CANDIDATE_TEXT_SIZE = "candidate_text_size"
+    /** 键帽主字/上滑提示字号相对默认的百分比（70–140，默认 100） */
+    const val KEY_KEYCAP_TEXT_SCALE = "keycap_text_scale"
+    const val DEFAULT_KEYCAP_TEXT_SCALE = 100
+    const val MIN_KEYCAP_TEXT_SCALE = 70
+    const val MAX_KEYCAP_TEXT_SCALE = 140
+    /**
+     * 长按气泡切项滑动距离倍数（×100 存储）：切换一项 = 键宽 × (值/100)。
+     * 数值越小切项越快；默认 125（1.25×）。
+     */
+    const val KEY_LONG_PRESS_TRAVEL_FACTOR = "long_press_travel_factor"
+    /** 滑动切项距离倍数 ×100。1.0× 居中；越小越快，越大越慢。 */
+    const val DEFAULT_LONG_PRESS_TRAVEL_FACTOR = 100
+    const val MIN_LONG_PRESS_TRAVEL_FACTOR = 50
+    const val MAX_LONG_PRESS_TRAVEL_FACTOR = 150
     const val INPUT_TEXT_INPUT_BOX = "input_box"
     const val INPUT_TEXT_CANDIDATE_BAR = "candidate_bar"
-    const val DEFAULT_PAGE_SIZE = 20 // 手机候选栏每页候选词数；schema 里的 page_size 来自 PC 版（5），太短，默认用 20
+    const val DEFAULT_PAGE_SIZE = 50 // 引擎每页拉取数；更多页 UI 按区域铺满，不再由用户设置
 
     fun isCompactModeEnabled(context: Context): Boolean {
         return getPrefs(context).getBoolean(KEY_COMPACT_MODE, true)
@@ -697,11 +711,11 @@ object SettingsPreferences {
         getPrefs(context).edit().putInt(key, offset).apply()
     }
 
-    fun getPageSize(context: Context): Int {
-        return getPrefs(context).getInt(KEY_PAGE_SIZE, DEFAULT_PAGE_SIZE)
-    }
+    /** 引擎候选拉取数（固定）；更多页展示量由可用区域自动铺满，不再读用户偏好。 */
+    fun getPageSize(context: Context): Int = DEFAULT_PAGE_SIZE
 
     fun setPageSize(context: Context, pageSize: Int) {
+        // 保留写入以免旧调用方崩溃；实际生效始终用 DEFAULT_PAGE_SIZE
         getPrefs(context).edit().putInt(KEY_PAGE_SIZE, pageSize).apply()
     }
 
@@ -714,6 +728,49 @@ object SettingsPreferences {
     fun setCandidateTextSize(context: Context, size: Int) {
         getPrefs(context).edit().putInt(KEY_CANDIDATE_TEXT_SIZE, size).apply()
     }
+
+    /** 键帽文字缩放百分比，范围 [MIN_KEYCAP_TEXT_SCALE, MAX_KEYCAP_TEXT_SCALE]。 */
+    fun getKeycapTextScale(context: Context): Int {
+        return getPrefs(context).getInt(KEY_KEYCAP_TEXT_SCALE, DEFAULT_KEYCAP_TEXT_SCALE)
+            .coerceIn(MIN_KEYCAP_TEXT_SCALE, MAX_KEYCAP_TEXT_SCALE)
+    }
+
+    fun setKeycapTextScale(context: Context, percent: Int) {
+        getPrefs(context).edit()
+            .putInt(
+                KEY_KEYCAP_TEXT_SCALE,
+                percent.coerceIn(MIN_KEYCAP_TEXT_SCALE, MAX_KEYCAP_TEXT_SCALE),
+            )
+            .apply()
+    }
+
+    /** 键帽文字缩放系数（1.0 = 默认）。 */
+    fun getKeycapTextScaleFactor(context: Context): Float =
+        getKeycapTextScale(context) / 100f
+
+    /** 长按气泡切项距离倍数（×100），范围 [MIN, MAX]。旧版默认 125/范围 100–200 会钳到新区间。 */
+    fun getLongPressTravelFactorHundredths(context: Context): Int {
+        val raw = getPrefs(context).getInt(
+            KEY_LONG_PRESS_TRAVEL_FACTOR,
+            DEFAULT_LONG_PRESS_TRAVEL_FACTOR,
+        )
+        // 旧默认 1.25× 映射到新中位 1.0×，避免升级后仍偏慢
+        val migrated = if (raw == 125) DEFAULT_LONG_PRESS_TRAVEL_FACTOR else raw
+        return migrated.coerceIn(MIN_LONG_PRESS_TRAVEL_FACTOR, MAX_LONG_PRESS_TRAVEL_FACTOR)
+    }
+
+    fun setLongPressTravelFactorHundredths(context: Context, hundredths: Int) {
+        getPrefs(context).edit()
+            .putInt(
+                KEY_LONG_PRESS_TRAVEL_FACTOR,
+                hundredths.coerceIn(MIN_LONG_PRESS_TRAVEL_FACTOR, MAX_LONG_PRESS_TRAVEL_FACTOR),
+            )
+            .apply()
+    }
+
+    /** 长按气泡切项距离倍数（1.0 = 默认居中）。 */
+    fun getLongPressTravelFactor(context: Context): Float =
+        getLongPressTravelFactorHundredths(context) / 100f
 
     // ── 方案市场「已安装」的持久记录 ──
     // 记录用户通过市场主动安装过的方案 id；与本地文件存在性解耦（方案可能仅作为依赖落盘，

@@ -406,6 +406,8 @@ keyboard:
   #   - 绝对路径（以 / 开头）：从根目录找起，如 /fonts/myfont.ttf
   #   - 相对路径（包含 /）：相对于 rime/ 目录，如 fonts/myfont.ttf
   #   - 仅文件名：相对于 rime/ 目录查找，如 myfont.ttf
+  # 候选/注释会自动回退内置遍黑体 P1（CJK 扩展区缺字），无需为罕用字单独配置。
+  # 也可把 PlangothicP1-Regular.ttf 放到 rime/fonts/ 覆盖内置版本。
   fonts:
     key_font: ""
     key_label_font: ""
@@ -439,23 +441,23 @@ keyboard:
       p: { tap: "p", swipe_up: "0", swipe_down: { label: "之辶冖宀廴礻", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["p", "P"] } }
 
       # ── 第二行 ──
-      a: { tap: "a", swipe_up: { label: "～", value: "~" }, swipe_down: { label: "工匚戈艹廿龷七弋戈", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["a", "A", "à", "á", "â", "ã", "ä", "å", "æ"] } }
-      s: { tap: "s", swipe_up: { label: "／", value: "/" }, swipe_down: { label: "木丁西", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["s", "S", "ß"] } }
+      a: { tap: "a", swipe_up: { label: "~", value: "~" }, swipe_down: { label: "工匚戈艹廿龷七弋戈", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["a", "A", "à", "á", "â", "ã", "ä", "å", "æ"] } }
+      s: { tap: "s", swipe_up: { label: "/", value: "/" }, swipe_down: { label: "木丁西", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["s", "S", "ß"] } }
       d: { tap: "d", swipe_up: { label: "：", value: ":" }, swipe_down: { label: "大犬三古龵镸石厂丆", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["d", "D"] } }
       f: { tap: "f", swipe_up: { label: "；", value: ";" }, swipe_down: { label: "土士二干十寸雨", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["f", "F"] } }
       g: { tap: "g", swipe_up: { label: "“", value: "\"" }, swipe_down: { label: "王龶五一戋", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["g", "G"] } }
       h: { tap: "h", swipe_up: { label: "”", value: "\"" }, swipe_down: { label: "目丨卜⺊上止龰", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["h", "H"] } }
-      j: { tap: "j", swipe_up: { label: "－", value: "-" }, swipe_down: { label: "日曰早廾刂虫丿Ⅱ", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["j", "J"] } }
-      k: { tap: "k", swipe_up: { label: "（", value: "(" }, swipe_down: { label: "口Ⅲ川", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["k", "K"] } }
+      j: { tap: "j", swipe_up: { label: "-", value: "-" }, swipe_down: { label: "日曰早廾刂虫丿Ⅱ", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["j", "J", "[", "{"] } }
+      k: { tap: "k", swipe_up: { label: "（", value: "(" }, swipe_down: { label: "口Ⅲ川", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["k", "K", "]", "}"] } }
       l: { tap: "l", swipe_up: { label: "）", value: ")" }, swipe_down: { label: "田甲囗四罒车皿力", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["l", "L"] } }
       # ── 第三行 ──
-      z: { tap: "z", swipe_up: { label: "＊", value: "*" }, swipe_down: { label: "", action: "none", display: "key" }, long_press: { display: "bubble", values: [ "z","Z"] } }
-      x: { tap: "x", swipe_up: { label: "＠", value: "@" }, swipe_down: { label: "弓匕纟幺弓𠤎", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["x", "X"] } }
+      z: { tap: "z", swipe_up: { label: "*", value: "*" }, swipe_down: { label: "", action: "none", display: "key" }, long_press: { display: "bubble", values: [ "z","Z"] } }
+      x: { tap: "x", swipe_up: { label: "@", value: "@" }, swipe_down: { label: "弓匕纟幺弓𠤎", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["x", "X"] } }
       c: { tap: "c", swipe_up: { label: "、", value: "、" }, swipe_down: { label: "又巴马厶龴ス", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["c", "C", "ç"] } }
       v: { tap: "v", swipe_up: { label: "？", value: "?" }, swipe_down: { label: "女刀九臼巛彐", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["v", "V"] } }
       b: { tap: "b", swipe_up: { label: "！", value: "!" }, swipe_down: { label: "子耳了也阝卩㔾凵", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["b", "B"] } }
-      n: { tap: "n", swipe_up: { label: "％", value: "%" }, swipe_down: { label: "已己巳心忄羽乙𠃜", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["n", "N", "ñ"] } }
-      m: { tap: "m", swipe_up: { label: "＃", value: "#" }, swipe_down: { label: "山由贝冂冎几", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["m", "M"] } }
+      n: { tap: "n", swipe_up: { label: "%", value: "%" }, swipe_down: { label: "已己巳心忄羽乙𠃜", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["n", "N", "ñ"] } }
+      m: { tap: "m", swipe_up: { label: "#", value: "#" }, swipe_down: { label: "山由贝冂冎几", action: "none", display: "bubble" }, long_press: { display: "bubble", values: ["m", "M"] } }
       # ── 第四行: 暂时不受layout控制 ──
       #  逗号键（中文模式：键面/上滑/长按均为中文标点）
       "'": { tap: { label: "，", value: "，" }, swipe_up: { label: "。", value: "。" }, long_press: { display: "bubble", values: ["，", "。"] } }

@@ -185,8 +185,10 @@ function plugin.getCategories()
 end
 
 function plugin.getEmojis(query)
-    local searchText = query.keyword or ""
-    local topK = query.topK or 100
+    query = query or {}
+    local searchText = tostring(query.keyword or "")
+    local topK = tonumber(query.topK) or 2000
+    if topK < 1 then topK = 2000 end
     local list = {}
     for i, k in ipairs(kaomojis) do
         if searchText == "" or string.find(k, searchText, 1, true) then

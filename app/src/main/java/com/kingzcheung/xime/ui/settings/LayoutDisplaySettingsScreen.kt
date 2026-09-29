@@ -216,17 +216,14 @@ fun LayoutDisplaySettingsContent(
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
+                })
+            }
 
-                    HorizontalDivider(
-                        modifier = Modifier.padding(start = 16.dp),
-                        thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    )
-
-                    val pageSizePref = SettingsPreferences.getPageSize(context)
-                    val effectiveValue = if (pageSizePref == 0) 20f else pageSizePref.toFloat()
-                    var pageSizeSlider by remember(effectiveValue) {
-                        mutableStateOf(effectiveValue)
+            item {
+                SettingsSection(title = "按键", content = {
+                    val keycapScalePref = SettingsPreferences.getKeycapTextScale(context)
+                    var keycapScale by remember(keycapScalePref) {
+                        mutableStateOf(keycapScalePref.toFloat())
                     }
 
                     Column(
@@ -237,34 +234,126 @@ fun LayoutDisplaySettingsContent(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "每页候选词数",
+                                text = "键帽文字大小",
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "${pageSizeSlider.toInt()} 个",
+                                text = "${keycapScale.toInt()}%",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Slider(
-                            value = pageSizeSlider,
-                            onValueChange = { pageSizeSlider = it },
-                            onValueChangeFinished = {
-                                val intValue = pageSizeSlider.toInt()
-                                SettingsPreferences.setPageSize(context, intValue)
-                            },
-                            valueRange = 20f..50f,
-                            steps = 29
-                        )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "修改后需到方案设置中点击部署才能生效",
+                            text = "主字与上滑/下滑提示一并缩放",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Slider(
+                            value = keycapScale,
+                            onValueChange = { keycapScale = it },
+                            onValueChangeFinished = {
+                                SettingsPreferences.setKeycapTextScale(context, keycapScale.toInt())
+                            },
+                            valueRange = SettingsPreferences.MIN_KEYCAP_TEXT_SCALE.toFloat()..
+                                SettingsPreferences.MAX_KEYCAP_TEXT_SCALE.toFloat(),
+                            steps = ((SettingsPreferences.MAX_KEYCAP_TEXT_SCALE -
+                                SettingsPreferences.MIN_KEYCAP_TEXT_SCALE) / 5) - 1
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "${SettingsPreferences.MIN_KEYCAP_TEXT_SCALE}%",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "默认 ${SettingsPreferences.DEFAULT_KEYCAP_TEXT_SCALE}%",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "${SettingsPreferences.MAX_KEYCAP_TEXT_SCALE}%",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                })
+            }
+
+            item {
+                SettingsSection(title = "长按气泡", content = {
+                    val travelPref = SettingsPreferences.getLongPressTravelFactorHundredths(context)
+                    var travelHundredths by remember(travelPref) {
+                        mutableStateOf(travelPref.toFloat())
+                    }
+
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "滑动切项距离",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = String.format("%.2f×", travelHundredths / 100f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "数值越小切项越快；1.0× 为默认居中",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Slider(
+                            value = travelHundredths,
+                            onValueChange = { travelHundredths = it },
+                            onValueChangeFinished = {
+                                SettingsPreferences.setLongPressTravelFactorHundredths(
+                                    context,
+                                    travelHundredths.toInt(),
+                                )
+                            },
+                            valueRange = SettingsPreferences.MIN_LONG_PRESS_TRAVEL_FACTOR.toFloat()..
+                                SettingsPreferences.MAX_LONG_PRESS_TRAVEL_FACTOR.toFloat(),
+                            steps = ((SettingsPreferences.MAX_LONG_PRESS_TRAVEL_FACTOR -
+                                SettingsPreferences.MIN_LONG_PRESS_TRAVEL_FACTOR) / 5) - 1
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "快 ${SettingsPreferences.MIN_LONG_PRESS_TRAVEL_FACTOR / 100f}×",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "默认 ${SettingsPreferences.DEFAULT_LONG_PRESS_TRAVEL_FACTOR / 100f}×",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "慢 ${SettingsPreferences.MAX_LONG_PRESS_TRAVEL_FACTOR / 100f}×",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 })
             }

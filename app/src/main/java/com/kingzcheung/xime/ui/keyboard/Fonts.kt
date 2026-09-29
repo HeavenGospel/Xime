@@ -3,6 +3,9 @@ package com.kingzcheung.xime.ui.keyboard
 import android.content.Context
 import android.content.res.AssetManager
 import android.graphics.Typeface
+import android.graphics.fonts.Font as PlatformFont
+import android.graphics.fonts.FontFamily as PlatformFontFamily
+import android.os.Build
 import android.util.Log
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -16,48 +19,46 @@ import java.io.File
  * 1. 绝对路径（以 / 开头）：从根目录找起，如 /fonts/myfont.ttf
  * 2. 相对路径（包含 / 但不以 / 开头）：相对于 rime/ 目录，如 fonts/myfont.ttf
  * 3. 仅文件名（不包含 /）：相对于 rime/ 目录查找，如 myfont.ttf
+ *
+ * 候选/注释默认用内置「遍黑体 P1」（覆盖 CJK 扩展 B 等），缺字时不再空白。
+ * 若配置了自定义候选字体，API 29+ 会把遍黑体挂为缺字回退。
  */
 object AppFonts {
     private const val TAG = "AppFonts"
     private const val CHAI_PUA_FONT = "ChaiPUA-0.2.7-snow.ttf"
+    private const val CJK_FALLBACK_ASSET = "fonts/PlangothicP1-Regular.ttf"
 
     private var initialized = false
     private lateinit var assetManager: AssetManager
     private lateinit var filesDir: File
     private lateinit var rimeDir: File
 
-    // 当前已加载的字体配置（用于跳过未变更的重复加载）
-    private var loadedConfigHash: Int = 0
+    // 初值勿用 0：全空 KeyboardFontConfig.hashCode() 也为 0
+    private var loadedConfigHash: Int = Int.MIN_VALUE
 
-    /** ChaiPUA 字体，用于显示 CJK 扩展区字符（如五笔字根） */
     val chaiPuaTypeface: Typeface by lazy {
         Typeface.createFromAsset(assetManager, CHAI_PUA_FONT)
     }
 
-    /** ChaiPUA FontFamily，用于 Compose Text */
     val chaiPuaFontFamily: FontFamily by lazy {
         FontFamily(Font(CHAI_PUA_FONT, assetManager))
     }
 
-    // ── 自定义字体缓存 ──
-    // Typeface 用于 native Canvas 绘制（如 SwipeBubble）
+    private var _cjkFallbackTypeface: Typeface? = null
+
     private var _keyTypeface: Typeface? = null
     private var _keyLabelTypeface: Typeface? = null
     private var _candidateTypeface: Typeface? = null
     private var _commentTypeface: Typeface? = null
 
-    // FontFamily 用于 Compose Text（如 CandidateBar）
     private var _keyFontFamily: FontFamily? = null
     private var _keyLabelFontFamily: FontFamily? = null
     private var _candidateFontFamily: FontFamily? = null
     private var _commentFontFamily: FontFamily? = null
 
-    // 粗体 Typeface 缓存（避免每次访问都新建）
     private var _keyFontTypeface: Typeface? = null
 
-    /** 按键主字 Typeface */
     val keyTypeface: Typeface get() = _keyTypeface ?: Typeface.DEFAULT
-    /** 按键主字粗体 Typeface（用于编辑键盘方向标签等） */
     val keyFontTypeface: Typeface get() {
         val cached = _keyFontTypeface
         if (cached != null) return cached
@@ -65,20 +66,13 @@ object AppFonts {
         _keyFontTypeface = created
         return created
     }
-    /** 字根标签 Typeface */
     val keyLabelTypeface: Typeface get() = _keyLabelTypeface ?: chaiPuaTypeface
-    /** 候选项 Typeface */
     val candidateTypeface: Typeface get() = _candidateTypeface ?: Typeface.DEFAULT
-    /** 注释 Typeface */
     val commentTypeface: Typeface get() = _commentTypeface ?: Typeface.DEFAULT
 
-    /** 按键主字 FontFamily */
     val keyFontFamily: FontFamily get() = _keyFontFamily ?: FontFamily.Default
-    /** 字根标签 FontFamily */
     val keyLabelFontFamily: FontFamily get() = _keyLabelFontFamily ?: chaiPuaFontFamily
-    /** 候选项 FontFamily */
     val candidateFontFamily: FontFamily get() = _candidateFontFamily ?: FontFamily.Default
-    /** 注释 FontFamily */
     val commentFontFamily: FontFamily get() = _commentFontFamily ?: FontFamily.Default
 
     fun initialize(context: Context) {
@@ -89,12 +83,6 @@ object AppFonts {
         rimeDir = File(filesDir, "rime")
     }
 
-    /**
-     * 加载自定义字体配置。
-     * 在 KeysConfigHelper.loadConfig() 时调用，配置变更时也会重新调用。
-     * 配置未变更时跳过重新解析（避免 reloadConfig 重复触发时反复加载大字体文件）。
-     * 字体加载后缓存在内存中，后续直接使用缓存的 Typeface/FontFamily。
-     */
     fun loadCustomFonts(config: KeyboardFontConfig) {
         if (!initialized) return
         val hash = config.hashCode()
@@ -103,29 +91,92 @@ object AppFonts {
 
         _keyTypeface = loadTypeface(config.keyFont)
         _keyLabelTypeface = loadTypeface(config.keyLabelFont)
-        _candidateTypeface = loadTypeface(config.candidateFont)
-        _commentTypeface = loadTypeface(config.commentFont)
+        _candidateTypeface = resolveTextTypeface(config.candidateFont)
+        _commentTypeface = resolveTextTypeface(config.commentFont)
 
-        // 复用已解析的 Typeface 构造 FontFamily，避免同一字体文件被解析两次
         _keyFontFamily = loadFontFamily(config.keyFont, _keyTypeface)
         _keyLabelFontFamily = loadFontFamily(config.keyLabelFont, _keyLabelTypeface)
-        _candidateFontFamily = loadFontFamily(config.candidateFont, _candidateTypeface)
-        _commentFontFamily = loadFontFamily(config.commentFont, _commentTypeface)
+        _candidateFontFamily = FontFamily(_candidateTypeface!!)
+        _commentFontFamily = FontFamily(_commentTypeface!!)
 
-        // 粗体缓存失效
         _keyFontTypeface = null
 
-        Log.d(TAG, "Custom fonts loaded: key=${config.keyFont}, keyLabel=${config.keyLabelFont}, candidate=${config.candidateFont}, comment=${config.commentFont}")
+        Log.d(
+            TAG,
+            "Custom fonts loaded: key=${config.keyFont}, keyLabel=${config.keyLabelFont}, " +
+                "candidate=${config.candidateFont}, comment=${config.commentFont}, " +
+                "cjkFallback=${_cjkFallbackTypeface != null}",
+        )
     }
 
     /**
-     * 解析字体路径为 File 对象。
-     * 支持四种格式：
-     * - 绝对路径（以 / 开头）：相对于应用数据根目录，如 /fonts/myfont.ttf → files/fonts/myfont.ttf
-     * - rime/ 开头：相对于应用数据根目录，如 rime/fonts/myfont.ttf → files/rime/fonts/myfont.ttf
-     * - 其他相对路径（包含 /）：相对于 rime/ 目录，如 fonts/myfont.ttf → files/rime/fonts/myfont.ttf
-     * - 仅文件名（不包含 /）：仅在 rime/ 目录（配置文件同目录）查找
+     * 未配置自定义字体 → 直接用遍黑体（覆盖扩展区）。
+     * 已配置 → 主字体 + 遍黑体缺字回退（API 29+）。
      */
+    private fun resolveTextTypeface(fontPath: String): Typeface {
+        val fallback = cjkFallbackTypeface()
+        if (fontPath.isBlank()) {
+            return fallback ?: Typeface.SANS_SERIF ?: Typeface.DEFAULT
+        }
+        val primaryFile = resolveFontPath(fontPath)
+        val primary = loadTypeface(fontPath)
+            ?: return fallback ?: Typeface.SANS_SERIF ?: Typeface.DEFAULT
+        if (fallback == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return primary
+        }
+        return try {
+            val primaryFamily = PlatformFontFamily.Builder(
+                PlatformFont.Builder(primaryFile).build(),
+            ).build()
+            val fallbackFamily = platformFamilyFromCjkFallback()
+                ?: return primary
+            Typeface.CustomFallbackBuilder(primaryFamily)
+                .addCustomFallback(fallbackFamily)
+                .setSystemFallback("sans-serif")
+                .build()
+        } catch (e: Exception) {
+            Log.e(TAG, "CustomFallbackBuilder failed, using primary only", e)
+            primary
+        }
+    }
+
+    private fun cjkFallbackTypeface(): Typeface? {
+        _cjkFallbackTypeface?.let { return it }
+        if (!initialized) return null
+        val userFile = File(rimeDir, "fonts/PlangothicP1-Regular.ttf")
+        if (userFile.exists()) {
+            try {
+                return Typeface.createFromFile(userFile).also { _cjkFallbackTypeface = it }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load user CJK fallback: ${userFile.absolutePath}", e)
+            }
+        }
+        return try {
+            Typeface.createFromAsset(assetManager, CJK_FALLBACK_ASSET).also {
+                _cjkFallbackTypeface = it
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "CJK fallback asset missing: $CJK_FALLBACK_ASSET", e)
+            null
+        }
+    }
+
+    private fun platformFamilyFromCjkFallback(): PlatformFontFamily? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        val userFile = File(rimeDir, "fonts/PlangothicP1-Regular.ttf")
+        return try {
+            val font = if (userFile.exists()) {
+                PlatformFont.Builder(userFile).build()
+            } else {
+                PlatformFont.Builder(assetManager, CJK_FALLBACK_ASSET).build()
+            }
+            PlatformFontFamily.Builder(font).build()
+        } catch (e: Exception) {
+            Log.w(TAG, "CJK fallback FontFamily missing", e)
+            null
+        }
+    }
+
     private fun resolveFontPath(fontPath: String): File {
         return when {
             fontPath.startsWith("/") -> File(filesDir, fontPath.removePrefix("/"))
@@ -135,10 +186,6 @@ object AppFonts {
         }
     }
 
-    /**
-     * 加载 Typeface（用于 native Canvas）。
-     * @return Typeface 或 null（文件不存在或加载失败）
-     */
     private fun loadTypeface(fontPath: String): Typeface? {
         if (fontPath.isBlank()) return null
         val fontFile = resolveFontPath(fontPath)
@@ -154,18 +201,11 @@ object AppFonts {
         }
     }
 
-    /**
-     * 加载 FontFamily（用于 Compose Text）。
-     * 优先复用已解析的 [typeface]，避免同一字体文件被重复解析。
-     * @return FontFamily 或 null（文件不存在或加载失败）
-     */
     private fun loadFontFamily(fontPath: String, typeface: Typeface?): FontFamily? {
         if (fontPath.isBlank()) return null
         if (typeface != null) return FontFamily(typeface)
         val fontFile = resolveFontPath(fontPath)
-        if (!fontFile.exists()) {
-            return null
-        }
+        if (!fontFile.exists()) return null
         return try {
             FontFamily(Typeface.createFromFile(fontFile))
         } catch (e: Exception) {

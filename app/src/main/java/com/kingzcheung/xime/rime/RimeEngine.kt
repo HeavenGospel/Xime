@@ -380,6 +380,66 @@ class RimeEngine {
         }
     }
 
+    /**
+     * 收集当前 composition 下全部候选（跨页），并回到第一页。
+     * 供「更多」候选页一次滑完展示，不依赖翻页。
+     */
+    fun collectAllCandidates(): Array<RimeCandidate> {
+        return tryLocked(emptyArray()) {
+            if (!nativeHasSession()) return@tryLocked emptyArray()
+            var guard = 0
+            while (guard++ < 100 && nativeHasPrevPage()) {
+                if (!nativePageUp()) break
+            }
+            val all = ArrayList<RimeCandidate>(64)
+            guard = 0
+            while (guard++ < 100) {
+                val page = nativeGetCandidatesWithComments() ?: emptyArray()
+                for (pair in page) {
+                    all.add(
+                        RimeCandidate(
+                            text = pair.getOrElse(0) { "" },
+                            comment = pair.getOrElse(1) { "" },
+                        )
+                    )
+                }
+                if (!nativeGetComposition().hasNextPage) break
+                if (!nativePageDown()) break
+            }
+            guard = 0
+            while (guard++ < 100 && nativeHasPrevPage()) {
+                if (!nativePageUp()) break
+            }
+            all.toTypedArray()
+        }
+    }
+
+    /**
+     * 按全局候选下标选词（跨页）：先回到首页再翻到目标页，再页内 select。
+     */
+    fun selectCandidateAbsolute(index: Int): Boolean {
+        if (index < 0) return false
+        return tryLocked(false) {
+            if (!nativeHasSession()) return@tryLocked false
+            var guard = 0
+            while (guard++ < 100 && nativeHasPrevPage()) {
+                if (!nativePageUp()) break
+            }
+            var remaining = index
+            guard = 0
+            while (guard++ < 100) {
+                val page = nativeGetCandidates() ?: emptyArray()
+                if (remaining < page.size) {
+                    return@tryLocked nativeSelectCandidate(remaining)
+                }
+                remaining -= page.size
+                if (!nativeGetComposition().hasNextPage) return@tryLocked false
+                if (!nativePageDown()) return@tryLocked false
+            }
+            false
+        }
+    }
+
     fun commit(): String {
         return tryLocked("") {
             nativeCommit() ?: ""

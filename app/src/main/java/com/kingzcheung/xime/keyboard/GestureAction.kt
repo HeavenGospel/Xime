@@ -77,6 +77,14 @@ enum class GestureAction(val value: String) {
         }
     },
 
+    /** 全选后复制。 */
+    COPY_ALL("copy_all") {
+        override fun execute(context: ActionExecutor, value: String) {
+            context.performEditorMenuAction(android.R.id.selectAll)
+            context.performEditorMenuAction(android.R.id.copy)
+        }
+    },
+
     /** 剪切。 */
     CUT("cut") {
         override fun execute(context: ActionExecutor, value: String) {

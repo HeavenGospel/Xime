@@ -187,6 +187,9 @@ object KeyboardThemes {
         val cfgColor = longToColor(primary)
         val lightened = lightenColor(cfgColor)
         val veryLight = lightenColor(cfgColor, 0.8f)
+        // 特殊键底：亮色主题用中等淡化（0.55），避免 0.8 接近纯白看不出主题色
+        val specialLight = entry.specialKeyBgColor?.let { longToColor(it) }
+            ?: lightenColor(cfgColor, 0.55f)
         val global = KeysConfigHelper.getKeyboardColors()
 
         val kbdBg = resolveBgColor(entry, isDark = false) ?: Color.White
@@ -206,7 +209,7 @@ object KeyboardThemes {
         return KeyboardColorScheme(
             id = id,
             name = entry.name.ifEmpty { id },
-            specialKeyLight = veryLight,
+            specialKeyLight = specialLight,
             specialKeyDark = cfgColor,
             accentLight = cfgColor,
             accentDark = lightened,

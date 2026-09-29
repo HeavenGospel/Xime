@@ -170,7 +170,7 @@ fun rememberSwipeBubbleDrawData(
     val contentScale = adaptiveKeyContentScale(
         keyHeightDp = keyBounds.height / density.density,
         referenceHeightDp = referenceHeightDp,
-    )
+    ) * LocalKeycapTextScale.current
     val bubbleScale = adaptiveBubbleScale(contentScale)
     val bodyHeightPx = with(density) { BubbleBodyHeight.toPx() } * bubbleScale
     // 尖端完整覆盖按下的按键（与按键同高），宽体锚定按键顶部悬在上方（见 boxTop）。

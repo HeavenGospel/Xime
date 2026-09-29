@@ -1,320 +1,563 @@
 package com.kingzcheung.xime.ui.keyboard
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 data class CandidatePageState(
     val candidates: List<String>,
     val candidateComments: List<String> = emptyList(),
     val associationCandidates: List<String> = emptyList(),
+    /** 候选栏按宽度实际展示的条数；更多列表从此下标之后开始。 */
+    val barVisibleCount: Int = -1,
     val backgroundColor: Color,
     val textColor: Color,
-    val hasNextPage: Boolean = false,
-    val hasPrevPage: Boolean = false,
+    /** 右侧功能键底色（与拼音页回车/删除同一套 specialKey）。 */
+    val sideKeyBgColor: Color = textColor.copy(alpha = 0.12f),
+    val sideKeyFgColor: Color = textColor,
     val bottomPaddingDp: Int = 0,
 )
 
 data class CandidatePageCallbacks(
-    val onCandidateSelect: (Int) -> Unit,
+    val onCandidateSelect: (index: Int, text: String, comment: String) -> Unit,
     val onAssociationSelect: ((Int) -> Unit)? = null,
-    val onPageDown: (() -> Unit)? = null,
-    val onPageUp: (() -> Unit)? = null,
+    val onLoadAllCandidates: (suspend () -> List<Pair<String, String>>)? = null,
+    val onDelete: (() -> Unit)? = null,
+    val onEnter: (() -> Unit)? = null,
     val onBack: (() -> Unit)? = null,
 )
 
+/**
+ * 更多候选页：栏上未展示的词按可用区域铺满分页；右侧上/下键与候选区上下滑均可翻页。
+ */
 @Composable
 fun CandidatePage(
     state: CandidatePageState,
     callbacks: CandidatePageCallbacks,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape =
         configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-    // 图标按钮容器色：surface 与 primary 的混合色调（带种子色但不过于强烈）
-    val iconButtonContainer = androidx.compose.ui.graphics.lerp(
-        MaterialTheme.colorScheme.surface,
-        MaterialTheme.colorScheme.primary,
-        0.35f
-    )
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
     val candidateFontFamily = AppFonts.candidateFontFamily
     val commentFontFamily = AppFonts.commentFontFamily
+    val sideWidth = if (isLandscape) 64.dp else 56.dp
 
-    val centerPage = 1
-    val pagerState = rememberPagerState(initialPage = centerPage, pageCount = { 3 })
+    var allItems by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var indexBase by remember { mutableIntStateOf(0) }
+    var assocMode by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(true) }
+    var pageIndex by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(pagerState.currentPage) {
-        if (pagerState.currentPage != centerPage) {
-            if (pagerState.currentPage == 0 && state.hasPrevPage && callbacks.onPageUp != null) {
-                callbacks.onPageUp()
-            } else if (pagerState.currentPage == 2 && state.hasNextPage && callbacks.onPageDown != null) {
-                callbacks.onPageDown()
-            }
-            pagerState.scrollToPage(centerPage)
+    LaunchedEffect(
+        state.candidates,
+        state.candidateComments,
+        state.associationCandidates,
+        state.barVisibleCount,
+        callbacks.onLoadAllCandidates,
+    ) {
+        loading = true
+        pageIndex = 0
+        allItems = emptyList()
+        val barSkip = if (state.barVisibleCount >= 0) state.barVisibleCount else state.candidates.size
+        indexBase = barSkip
+        assocMode = state.candidates.isEmpty() && state.associationCandidates.isNotEmpty()
+        if (assocMode) {
+            allItems = state.associationCandidates
+                .drop(barSkip.coerceAtLeast(0))
+                .map { it to "" }
+            loading = false
+            return@LaunchedEffect
         }
+        val loader = callbacks.onLoadAllCandidates
+        if (loader == null) {
+            allItems = state.candidates
+                .drop(barSkip)
+                .mapIndexed { i, text -> text to state.candidateComments.getOrElse(barSkip + i) { "" } }
+            loading = false
+            return@LaunchedEffect
+        }
+        val loaded = withContext(Dispatchers.Default) { loader() }
+        allItems = if (loaded.size > barSkip) loaded.drop(barSkip) else emptyList()
+        loading = false
     }
 
-    // 禁用页面滑动手势（翻页由按钮控制，避免滑到空白页）
-    val userScrollEnabled = false
+    val hSpacingPx = with(density) { 4.dp.toPx() }
+    val vSpacingPx = with(density) { 4.dp.toPx() }
+    val itemHPadPx = with(density) { 20.dp.toPx() }
+    val itemVPadPx = with(density) { 16.dp.toPx() }
+    val commentGapPx = with(density) { 4.dp.toPx() }
+    val indicatorReservePx = with(density) { 28.dp.toPx() }
+    val itemHeightPx = with(density) { 18.sp.toPx() + itemVPadPx }
+
+    fun measureItemWidth(text: String, comment: String): Float {
+        val textW = textMeasurer.measure(
+            text = AnnotatedString(text),
+            style = TextStyle(
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Medium,
+                fontFamily = candidateFontFamily,
+            ),
+        ).size.width.toFloat()
+        val commentW = if (comment.isEmpty()) 0f else {
+            commentGapPx + textMeasurer.measure(
+                text = AnnotatedString(comment),
+                style = TextStyle(fontSize = 11.sp, fontFamily = commentFontFamily),
+            ).size.width.toFloat()
+        }
+        return textW + commentW + itemHPadPx
+    }
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .background(state.backgroundColor)
     ) {
-        // 导航区
-        Row(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(50.dp)
-                .padding(horizontal = if (isLandscape) 50.dp else 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .weight(1f)
+                .padding(horizontal = if (isLandscape) 50.dp else 4.dp)
+                .padding(top = 4.dp),
         ) {
+            val sidePx = with(density) { sideWidth.toPx() + 4.dp.toPx() }
+            val contentW = (constraints.maxWidth.toFloat() - sidePx).coerceAtLeast(0f)
+            // 左右各 4.dp padding
+            val padH = with(density) { 8.dp.toPx() }
+            val padV = with(density) { 8.dp.toPx() }
+            val availW = (contentW - padH).coerceAtLeast(0f)
+            val availH = (constraints.maxHeight.toFloat() - padV).coerceAtLeast(0f)
 
-            Spacer(modifier = Modifier.weight(1f))
-
-            // 翻页按钮
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (state.hasPrevPage && callbacks.onPageUp != null) state.textColor.copy(alpha = 0.5f)
-                            else state.textColor.copy(alpha = 0.1f)
-                        )
-                        .tolerantClick(
-                            enabled = state.hasPrevPage && state.candidates.isNotEmpty() && callbacks.onPageUp != null,
-                            onClick = { callbacks.onPageUp?.invoke() }
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                        contentDescription = "上一页",
-                        tint = if (state.hasPrevPage) state.textColor else state.textColor.copy(alpha = 0.3f),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (state.hasNextPage && callbacks.onPageDown != null) state.textColor.copy(alpha = 0.25f)
-                            else state.textColor.copy(alpha = 0.1f)
-                        )
-                        .tolerantClick(
-                            enabled = state.hasNextPage && state.candidates.isNotEmpty() && callbacks.onPageDown != null,
-                            onClick = { callbacks.onPageDown?.invoke() }
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "下一页",
-                        tint = if (state.hasNextPage) state.textColor else state.textColor.copy(alpha = 0.3f),
-                        modifier = Modifier.size(20.dp)
+            val pageStarts = remember(allItems, availW, availH, loading) {
+                if (loading || allItems.isEmpty() || availW <= 0f || availH <= 0f) {
+                    intArrayOf(0)
+                } else {
+                    packCandidatePageStarts(
+                        items = allItems,
+                        availableWidthPx = availW,
+                        availableHeightPx = availH,
+                        hSpacingPx = hSpacingPx,
+                        vSpacingPx = vSpacingPx,
+                        itemHeightPx = itemHeightPx,
+                        indicatorReservePx = indicatorReservePx,
+                        measureWidth = ::measureItemWidth,
                     )
                 }
             }
-            Spacer(modifier = Modifier.width(16.dp))
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(iconButtonContainer)
-                    .tolerantClick { callbacks.onBack?.invoke() },
-                contentAlignment = Alignment.Center
+            val pageCount = (pageStarts.size - 1).coerceAtLeast(0)
+            val safePage = pageIndex.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
+            val pageOffset = if (pageCount == 0) 0 else pageStarts[safePage]
+            val pageEnd = if (pageCount == 0) 0 else pageStarts[safePage + 1]
+            val pageItems =
+                if (pageCount == 0) emptyList() else allItems.subList(pageOffset, pageEnd)
+            val hasPrevPage = safePage > 0
+            val hasNextPage = safePage < pageCount - 1
+            val currentPage = rememberUpdatedState(safePage)
+            val totalPages = rememberUpdatedState(pageCount)
+
+            LaunchedEffect(pageCount) {
+                if (pageCount > 0 && pageIndex >= pageCount) pageIndex = pageCount - 1
+            }
+
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Icon(
-                    imageVector = Icons.Default.KeyboardArrowUp,
-                    contentDescription = "返回",
-                    tint = state.textColor,
-                    modifier = Modifier.size(24.dp)
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .padding(horizontal = 4.dp, vertical = 4.dp)
+                        .pointerInput(Unit) {
+                            val threshold = 48.dp.toPx()
+                            var accumulated = 0f
+                            detectVerticalDragGestures(
+                                onDragStart = { accumulated = 0f },
+                                onVerticalDrag = { change, dragAmount ->
+                                    change.consume()
+                                    accumulated += dragAmount
+                                },
+                                onDragEnd = {
+                                    val cur = currentPage.value
+                                    val count = totalPages.value
+                                    when {
+                                        accumulated < -threshold && cur < count - 1 ->
+                                            pageIndex = cur + 1
+                                        accumulated > threshold && cur > 0 ->
+                                            pageIndex = cur - 1
+                                    }
+                                },
+                                onDragCancel = { accumulated = 0f },
+                            )
+                        },
+                ) {
+                    when {
+                        loading -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 24.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(28.dp),
+                                    color = state.textColor.copy(alpha = 0.45f),
+                                    strokeWidth = 2.dp,
+                                )
+                            }
+                        }
+                        pageItems.isEmpty() -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 24.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "没有更多候选",
+                                    color = state.textColor.copy(alpha = 0.45f),
+                                    fontSize = 14.sp,
+                                )
+                            }
+                        }
+                        else -> {
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                pageItems.forEachIndexed { index, (candidate, comment) ->
+                                    val absolute = indexBase + pageOffset + index
+                                    CandidatePageItem(
+                                        text = candidate,
+                                        comment = comment,
+                                        onClick = {
+                                            if (assocMode) {
+                                                callbacks.onAssociationSelect?.invoke(absolute)
+                                            } else {
+                                                callbacks.onCandidateSelect(
+                                                    absolute,
+                                                    candidate,
+                                                    comment,
+                                                )
+                                            }
+                                        },
+                                        textColor = state.textColor,
+                                        candidateFontFamily = candidateFontFamily,
+                                        commentFontFamily = commentFontFamily,
+                                    )
+                                }
+                            }
+                            if (pageCount > 1) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "${safePage + 1} / $pageCount",
+                                    color = state.textColor.copy(alpha = 0.45f),
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                CandidatePageSideColumn(
+                    sideWidth = sideWidth,
+                    hasPrevPage = hasPrevPage,
+                    hasNextPage = hasNextPage,
+                    onPrev = { pageIndex = (safePage - 1).coerceAtLeast(0) },
+                    onNext = {
+                        pageIndex = (safePage + 1).coerceAtMost((pageCount - 1).coerceAtLeast(0))
+                    },
+                    sideKeyBgColor = state.sideKeyBgColor,
+                    sideKeyFgColor = state.sideKeyFgColor,
+                    onDelete = callbacks.onDelete,
+                    onEnter = callbacks.onEnter,
+                    onBack = callbacks.onBack,
                 )
             }
         }
 
-        HorizontalPager(
-            state = pagerState,
-            userScrollEnabled = userScrollEnabled,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp)
-        ) { page ->
-            if (page == centerPage) {
-                // 候选条目点击与外层 verticalScroll 存在手势竞争：按下后轻微位移超过
-                // touch slop 即被判定为滚动，点击被静默取消（无任何反馈）。部分 ROM
-                // （如鸿蒙）的 slop/触摸采样更敏感，表现为"偶尔点击候选无反应"。
-                // 内容不超高时彻底禁用滚动容器，保证点击稳定命中；超高时仍可滚动，
-                // 由候选条目的 tolerantClick（宽容位移判定）兜底。
-                var viewportHeight by remember { mutableStateOf(0) }
-                var contentHeight by remember { mutableStateOf(0) }
-                val scrollState = rememberScrollState()
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onSizeChanged { viewportHeight = it.height }
-                        .verticalScroll(
-                            scrollState,
-                            enabled = viewportHeight > 0 && contentHeight > viewportHeight
-                        )
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .onSizeChanged { contentHeight = it.height }
-                    ) {
-                        if (state.candidates.isNotEmpty()) {
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            state.candidates.forEachIndexed { index, candidate ->
-                                CandidatePageItem(
-                                    text = candidate,
-                                    comment = state.candidateComments.getOrElse(index) { "" },
-                                    onClick = { callbacks.onCandidateSelect(index) },
-                                    textColor = state.textColor,
-                                    candidateFontFamily = candidateFontFamily,
-                                    commentFontFamily = commentFontFamily
-                                )
-                            }
-                        }
-                    }
+        Spacer(modifier = Modifier.height(state.bottomPaddingDp.dp))
+    }
+}
 
-                    if (state.associationCandidates.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
+@Composable
+private fun CandidatePageSideColumn(
+    sideWidth: Dp,
+    hasPrevPage: Boolean,
+    hasNextPage: Boolean,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    sideKeyBgColor: Color,
+    sideKeyFgColor: Color,
+    onDelete: (() -> Unit)?,
+    onEnter: (() -> Unit)?,
+    onBack: (() -> Unit)?,
+) {
+    Column(
+        modifier = Modifier
+            .width(sideWidth)
+            .fillMaxHeight(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        CandidateSideKey(
+            icon = Icons.Filled.KeyboardArrowUp,
+            contentDescription = "上一页",
+            backgroundColor = sideKeyBgColor,
+            contentColor = sideKeyFgColor,
+            enabled = hasPrevPage,
+            onClick = onPrev,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        )
+        CandidateSideKey(
+            icon = Icons.Filled.KeyboardArrowDown,
+            contentDescription = "下一页",
+            backgroundColor = sideKeyBgColor,
+            contentColor = sideKeyFgColor,
+            enabled = hasNextPage,
+            onClick = onNext,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        )
+        CandidateSideKey(
+            icon = Icons.AutoMirrored.Filled.Backspace,
+            contentDescription = "删除",
+            backgroundColor = sideKeyBgColor,
+            contentColor = sideKeyFgColor,
+            enabled = onDelete != null,
+            onClick = { onDelete?.invoke() },
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        )
+        CandidateSideKey(
+            icon = Icons.AutoMirrored.Filled.KeyboardReturn,
+            contentDescription = "回车",
+            label = "确定",
+            backgroundColor = sideKeyBgColor,
+            contentColor = sideKeyFgColor,
+            enabled = onEnter != null || onBack != null,
+            onClick = {
+                if (onEnter != null) onEnter.invoke()
+                else onBack?.invoke()
+            },
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        )
+    }
+}
 
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            state.associationCandidates.forEachIndexed { index, candidate ->
-                                CandidatePageItem(
-                                    text = candidate,
-                                    comment = "",
-                                    onClick = { callbacks.onAssociationSelect?.invoke(index) },
-                                    textColor = state.textColor,
-                                    candidateFontFamily = candidateFontFamily,
-                                    commentFontFamily = commentFontFamily
-                                )
-                            }
-                        }
-                    }
-                    }
+/**
+ * 按 FlowRow 规则把候选装进若干页，返回每页起点下标（末尾附 items.size）。
+ * 多页时预留页码条高度，避免最后一行被挤出可视区。
+ */
+internal fun packCandidatePageStarts(
+    items: List<Pair<String, String>>,
+    availableWidthPx: Float,
+    availableHeightPx: Float,
+    hSpacingPx: Float,
+    vSpacingPx: Float,
+    itemHeightPx: Float,
+    indicatorReservePx: Float,
+    measureWidth: (text: String, comment: String) -> Float,
+): IntArray {
+    if (items.isEmpty()) return intArrayOf(0)
+
+    fun pack(reserveIndicator: Boolean): IntArray {
+        val heightBudget = (availableHeightPx - if (reserveIndicator) indicatorReservePx else 0f)
+            .coerceAtLeast(itemHeightPx)
+        val starts = ArrayList<Int>(8)
+        starts.add(0)
+        var rowWidth = 0f
+        var usedHeight = itemHeightPx
+        var rowHasItem = false
+
+        fun breakPage(at: Int) {
+            if (starts.last() != at) starts.add(at)
+            rowWidth = 0f
+            usedHeight = itemHeightPx
+            rowHasItem = false
+        }
+
+        items.forEachIndexed { index, (text, comment) ->
+            val w = measureWidth(text, comment).coerceAtMost(availableWidthPx)
+            val needNewRow = rowHasItem && rowWidth + hSpacingPx + w > availableWidthPx + 0.5f
+            if (needNewRow) {
+                val nextHeight = usedHeight + vSpacingPx + itemHeightPx
+                if (nextHeight > heightBudget + 0.5f) {
+                    breakPage(index)
+                    rowWidth = w
+                    rowHasItem = true
+                } else {
+                    usedHeight = nextHeight
+                    rowWidth = w
+                    rowHasItem = true
+                }
+            } else {
+                rowWidth = if (rowHasItem) rowWidth + hSpacingPx + w else w
+                rowHasItem = true
+                if (usedHeight > heightBudget + 0.5f && index > starts.last()) {
+                    breakPage(index)
+                    rowWidth = w
+                    rowHasItem = true
                 }
             }
         }
+        starts.add(items.size)
+        return starts.toIntArray()
+    }
 
-        Spacer(modifier = Modifier.weight(1f))
+    var result = pack(reserveIndicator = false)
+    if (result.size > 2) {
+        result = pack(reserveIndicator = true)
+    }
+    return result
+}
 
-        // 底部留空
-        Spacer(
-            modifier = Modifier.height(
-                if (isLandscape) 15.dp else state.bottomPaddingDp.dp
+@Composable
+private fun CandidateSideKey(
+    icon: ImageVector,
+    contentDescription: String,
+    backgroundColor: Color,
+    contentColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    label: String? = null,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val fg = if (enabled) contentColor else contentColor.copy(alpha = 0.35f)
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (isPressed && enabled) backgroundColor.copy(alpha = 0.85f)
+                else backgroundColor
             )
-        )
+            .tolerantClick(
+                enabled = enabled,
+                showRipple = false,
+                interactionSource = interactionSource,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = fg,
+                modifier = Modifier.size(22.dp),
+            )
+            if (label != null) {
+                Text(
+                    text = label,
+                    color = fg,
+                    fontSize = 11.sp,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                )
+            }
+        }
     }
 }
 
 @Composable
 fun CandidatePageItem(
     text: String,
-    comment: String = "",
+    comment: String,
     onClick: () -> Unit,
     textColor: Color,
-    modifier: Modifier = Modifier,
-    candidateFontFamily: androidx.compose.ui.text.font.FontFamily = androidx.compose.ui.text.font.FontFamily.Default,
-    commentFontFamily: androidx.compose.ui.text.font.FontFamily = androidx.compose.ui.text.font.FontFamily.Default,
+    candidateFontFamily: androidx.compose.ui.text.font.FontFamily,
+    commentFontFamily: androidx.compose.ui.text.font.FontFamily,
 ) {
-    val displayComment = comment.replace("~", "")
-
-    // 按压高亮：与主键盘按键同风格的按下反馈（默认 ripple 在部分主题背景上不可见）
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
-
     Row(
-
-        modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (isPressed) textColor.copy(alpha = 0.12f) else Color.Transparent)
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (isPressed) textColor.copy(alpha = 0.12f) else Color.Transparent
+            )
             .tolerantClick(
                 showRipple = false,
                 interactionSource = interactionSource,
-                onClick = onClick
+                onClick = onClick,
             )
-            .padding(horizontal = 4.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
             text = text,
             color = textColor,
             fontSize = 18.sp,
-            fontWeight = FontWeight.Normal,
+            fontWeight = FontWeight.Medium,
             maxLines = 1,
-            modifier = Modifier
-                .padding(horizontal = 2.dp),
-            fontFamily = candidateFontFamily
+            softWrap = false,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Visible,
+            fontFamily = candidateFontFamily,
         )
-        if (displayComment.isNotEmpty()) {
+        if (comment.isNotEmpty()) {
             Text(
-                text = displayComment,
+                text = comment,
                 color = textColor.copy(alpha = 0.5f),
                 fontSize = 11.sp,
-                fontWeight = FontWeight.Normal,
                 maxLines = 1,
-                modifier = Modifier
-                    .padding(horizontal = 1.dp),
-                fontFamily = commentFontFamily
+                softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Visible,
+                fontFamily = commentFontFamily,
             )
         }
     }

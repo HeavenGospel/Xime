@@ -43,17 +43,16 @@ internal class ImeSchemaController(private val service: XimeInputMethodService) 
                 )
             }
         } else if (candState.isComposing) {
-            if (candState.candidates.isNotEmpty()) {
-                service.keyRouter.selectCandidateAsync(0)
-            } else {
-                val input = candState.inputText
-                if (input.isNotEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        service.commitText(input)
-                    }
-                    service.rimeEngine.clearComposition()
+            // 切英文：上屏原始拉丁编码，不上屏中文首选
+            val raw = candState.inputText.ifEmpty {
+                candState.preeditText.filter { it.code < 0x80 }
+            }
+            if (raw.isNotEmpty()) {
+                withContext(Dispatchers.Main) {
+                    service.commitText(raw)
                 }
             }
+            service.rimeEngine.clearComposition()
         }
         // 由 ImeKeyRouter 在 key-processing 线程调用：toggleAsciiMode 阻塞等待 rimeLock
         // （部署/维护持锁时排队，完成后自动切换），不静默失败、不阻塞主线程。
@@ -183,6 +182,10 @@ internal class ImeSchemaController(private val service: XimeInputMethodService) 
         when (action) {
             "select_all" -> ic.performContextMenuAction(android.R.id.selectAll)
             "copy" -> ic.performContextMenuAction(android.R.id.copy)
+            "copy_all" -> {
+                ic.performContextMenuAction(android.R.id.selectAll)
+                ic.performContextMenuAction(android.R.id.copy)
+            }
             "cut" -> ic.performContextMenuAction(android.R.id.cut)
             "paste" -> ic.performContextMenuAction(android.R.id.paste)
             "home" -> ic.setSelection(0, 0)

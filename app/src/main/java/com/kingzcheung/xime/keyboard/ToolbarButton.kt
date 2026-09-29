@@ -5,6 +5,7 @@ import androidx.compose.material.icons.automirrored.twotone.Assignment
 import androidx.compose.material.icons.automirrored.twotone.LastPage
 import androidx.compose.material.icons.twotone.ContentCopy
 import androidx.compose.material.icons.twotone.ContentPaste
+import androidx.compose.material.icons.twotone.CopyAll
 import androidx.compose.material.icons.twotone.EmojiEmotions
 import androidx.compose.material.icons.twotone.FirstPage
 import androidx.compose.material.icons.twotone.KeyboardAlt
@@ -36,6 +37,8 @@ enum class ToolbarButton(
     FLOAT("float", "悬浮", Icons.Default.PictureInPicture),
     SELECT_ALL("select_all", "全选", Icons.TwoTone.SelectAll),
     COPY("copy", "复制", Icons.TwoTone.ContentCopy),
+    /** 先全选再复制；图标 CopyAll = 叠层复制，表示「复制全部」。 */
+    COPY_ALL("copy_all", "全选复制", Icons.TwoTone.CopyAll),
     PASTE("paste", "粘贴", Icons.TwoTone.ContentPaste),
     HOME("home", "段首", Icons.TwoTone.FirstPage),
     END("end", "段尾", Icons.AutoMirrored.TwoTone.LastPage),

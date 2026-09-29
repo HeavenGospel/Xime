@@ -14,7 +14,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
 
 /**
  * 按键输入路由。
@@ -699,7 +701,9 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                     // 字母键不进入此分支（即使 pendingEnglish 非空），需要继续积累编码
                     // 英文模式（isAsciiMode）下非字母键（QWERTY 上滑的数字/符号、数字/符号面板）
                     // 直接上屏，不进入 Rime 引擎与 pendingEnglish 累积（上滑字符即输即上）。
-                    if ((state.isAsciiMode || pendingEnglish.isNotEmpty()) && !key.matches(Regex("[a-zA-Z]"))) {
+                    // 例外：@ / ＠ 不依赖方案 punctuator（雾凇等常为 "@": "@" 无菜单），统一走联想栏域名。
+                    val isAtSign = key == "@" || key == "＠"
+                    if ((state.isAsciiMode || pendingEnglish.isNotEmpty()) && !key.matches(Regex("[a-zA-Z]")) && !isAtSign) {
                         val finalKey = key
                         withContext(Dispatchers.Main) {
                             // 直接上屏模式：pendingEnglish 对应字符已逐字落盘，只提交增量键值。
@@ -709,10 +713,15 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                                 associationCandidates = emptyList()
                             )
                         }
+                    } else if (isAtSign) {
+                        // 中/英统一：联想栏展示邮箱域名，避免被方案 punctuator 盖掉（雾凇等）
+                        withContext(Dispatchers.Main) {
+                            service.showEmailAtDomainCandidates()
+                        }
                     } else {
                         val isChinese = !state.isAsciiMode
                         val char = key
-                        val keyCode = key.lowercase()[0].code
+                        val keyCode = if (isAtSign) '@'.code else key.lowercase()[0].code
                         val mask = if (isShifted) KeyEvent.META_SHIFT_ON else 0
                         val isLetter = key.matches(Regex("[a-zA-Z]"))
                         val isShiftedChinese = isShifted && isChinese && isLetter
@@ -720,11 +729,13 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                         // 非 ASCII 可打印字符（全角符号/中文标点）：直接上屏，不进入 Rime 引擎。
                         // Rime processKey 只接受标准键码，全角键码（如 U+FF0F）无法识别会被静默
                         // 丢弃，导致中文模式下符号面板点击全角字符无输出（与 Trime onText 行为一致）。
-                        // 例外：成对引号仍映射为 ASCII 交给 punctuator，才能左右交替。
+                        // 例外：成对引号仍映射为 ASCII 交给 punctuator，才能左右交替；
+                        // ＠ 映射为 @，才能弹出邮箱域名候选。
                         if (char.isNotEmpty() && char.any { it.code > 0x7E }) {
                             val pairKey = when (char) {
                                 "“", "”" -> '"'.code
                                 "‘", "’" -> '\''.code
+                                "＠" -> '@'.code
                                 else -> null
                             }
                             if (pairKey != null) {
@@ -1456,4 +1467,140 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
         }
     }
 
+    /**
+     * 「更多」候选页：在 key 线程收集全部候选后回到首页，不刷中间页到 UI。
+     */
+    suspend fun collectAllCandidatesSuspend(): List<Pair<String, String>> {
+        return suspendCancellableCoroutine { cont ->
+            postRimeJob {
+                val list = runCatching {
+                    service.rimeEngine.collectAllCandidates().map { it.text to it.comment }
+                }.getOrElse { emptyList() }
+                cont.resume(list)
+            }
+        }
+    }
+
+    /**
+     * 「更多」候选页点选：按全局下标选词（跨页），commit 路径对齐 [selectCandidateAsync]。
+     */
+    fun selectExpandedCandidate(index: Int, text: String, comment: String) {
+        postRimeJob {
+            selectExpandedCandidateAsync(index, text, comment)
+        }
+    }
+
+    private suspend fun selectExpandedCandidateAsync(index: Int, text: String, comment: String) {
+        val selectedCandidate = text.ifEmpty { null }
+        val isT9 = isT9Schema(service.uiState.value.currentSchemaId)
+        val candidatePinyin = comment.ifEmpty { null }
+        val candidateTextLength = selectedCandidate?.length ?: 0
+        val fullyConsumed = if (isT9) {
+            service.keyboardCallbacks?.onT9RightCandidateWillBeSelected?.invoke(
+                candidatePinyin, selectedCandidate, candidateTextLength
+            ) ?: false
+        } else {
+            false
+        }
+
+        val selectRimeOk = if (isT9) {
+            true
+        } else {
+            service.rimeEngine.selectCandidateAbsolute(index)
+        }
+        if (!selectRimeOk) return
+
+        val committedText = if (isT9) "" else service.rimeEngine.commit()
+        val isFullCommit = if (isT9) {
+            fullyConsumed && selectedCandidate != null
+        } else {
+            committedText.isNotEmpty()
+        }
+        if (isFullCommit) {
+            if (SettingsPreferences.isSmartPredictionEnabled(service) && selectedCandidate != null && AssociationManager.isInitialized()) {
+                if (service.predictionManager.lastCommittedText.isNotEmpty()) {
+                    val lastChar = service.predictionManager.lastCommittedText.last().toString()
+                    service.predictionManager.recordInputPair(lastChar, selectedCandidate)
+                }
+            }
+            val textToMerge = if (isT9 && selectedCandidate != null) {
+                selectedCandidate
+            } else if (committedText.isNotEmpty()) {
+                committedText
+            } else {
+                selectedCandidate!!
+            }
+            val partialTexts = service.t9PartialSegments.map { it.text }
+            val fullCommitText = if (isT9 && partialTexts.isNotEmpty()) {
+                if (candidatePinyin == null) {
+                    partialTexts.joinToString("")
+                } else {
+                    partialTexts.joinToString("") + textToMerge
+                }
+            } else {
+                textToMerge
+            }
+            val fullCommitPinyin = buildString {
+                service.t9PartialSegments.forEachIndexed { i, seg ->
+                    if (i > 0) append(' ')
+                    append(seg.pinyin)
+                }
+                if (candidatePinyin != null) {
+                    if (isNotEmpty()) append(' ')
+                    append(candidatePinyin)
+                }
+            }
+            withContext(Dispatchers.Main) {
+                service.commitText(fullCommitText)
+                service.t9PartialSegments.clear()
+                service.candidateState.value = service.candidateState.value.copy(
+                    inputText = "",
+                    preeditText = "",
+                    candidates = emptyList(),
+                    candidateComments = emptyList(),
+                    isComposing = false,
+                    hasNextPage = false,
+                    hasPrevPage = false,
+                    isShowingRecentClipboard = false
+                )
+                service.uiState.value = service.uiState.value.copy(
+                    t9ResetSignal = service.uiState.value.t9ResetSignal + 1,
+                    t9RightCandidateSelectedCount = 0,
+                    t9SelectedCandidatePinyin = ""
+                )
+            }
+            if (isT9 && fullCommitText.isNotEmpty() && fullCommitPinyin.isNotEmpty()) {
+                service.rimeEngine.t9Memorize(fullCommitText, fullCommitPinyin)
+            }
+            if (isT9) service.rimeEngine.clearComposition()
+        } else {
+            withContext(Dispatchers.Main) {
+                if (isT9) {
+                    if (selectedCandidate != null) {
+                        service.t9PartialSegments.add(T9PartialSegment(selectedCandidate, candidatePinyin ?: ""))
+                    }
+                    service.uiState.value = service.uiState.value.copy(
+                        t9RightCandidateSelectedCount = service.uiState.value.t9RightCandidateSelectedCount + 1,
+                        t9SelectedCandidatePinyin = candidatePinyin ?: ""
+                    )
+                    service.keyboardCallbacks?.onT9ForceSendToRime?.invoke()
+                } else {
+                    service.updateUI()
+                }
+            }
+        }
+    }
+
+    companion object {
+        /** 按下 @ 时的邮箱域名候选（与 default.yaml / symbols.yaml punctuator 对齐）。 */
+        val EMAIL_AT_DOMAIN_CANDIDATES = listOf(
+            "@",
+            "@qq.com",
+            "@163.com",
+            "@126.com",
+            "@gmail.com",
+            "@outlook.com",
+            "@foxmail.com",
+        )
+    }
 }

@@ -241,6 +241,10 @@ internal fun rememberImeKeyboardCallbacks(
             },
             onPageDown = { service.keyRouter.pageDown() },
             onPageUp = { service.keyRouter.pageUp() },
+            onCollectAllCandidates = { service.keyRouter.collectAllCandidatesSuspend() },
+            onExpandedCandidateSelect = { index, text, comment ->
+                service.keyRouter.selectExpandedCandidate(index, text, comment)
+            },
             onCursorMove = { direction ->
                 val ic = service.currentInputConnection
                 if (ic != null && direction != 0) {
@@ -485,21 +489,11 @@ internal fun rememberImeKeyboardCallbacks(
             },
             onShowBitwardenSearch = bitwardenToggle@{
                 val s = service.uiState.value
-                // 单击切换：已打开搜索/详情/编辑/PIN 时再点盾牌即关闭
+                // 单击切换：已打开搜索/详情/编辑/PIN 时再点盾牌即关闭（保留 Viewing/Editing 供下次恢复）
                 if (s.bitwardenSearchVisible || s.bitwardenEditVisible ||
                     s.bitwardenDetailVisible || s.bitwardenPinVisible
                 ) {
-                    service.closeBitwardenSearch()
-                    service.closeBitwardenDetail()
-                    service.closeBitwardenEdit()
-                    service.closeBitwardenPin()
-                    // 每次打开模式：关掉后下次仍要 PIN
-                    if (com.kingzcheung.xime.bitwarden.BitwardenPrefs.getPinMode(service) ==
-                        com.kingzcheung.xime.bitwarden.BitwardenPinMode.EVERY_OPEN
-                    ) {
-                        com.kingzcheung.xime.bitwarden.BitwardenPrefs.clearPinVerified(service)
-                    }
-                    service.uiState.value = service.uiState.value.copy(enterKeyText = "发送")
+                    service.hideBitwardenPanels()
                     return@bitwardenToggle
                 }
                 val page = service.keyboardViewModel.page.value
@@ -511,8 +505,7 @@ internal fun rememberImeKeyboardCallbacks(
                 }
                 if (com.kingzcheung.xime.bitwarden.BitwardenPrefs.isPinRequiredToOpen(service)) {
                     service.closeToolPanel()
-                    service.closeBitwardenEdit()
-                    service.closeBitwardenSearch()
+                    service.hideBitwardenPanels()
                     service.keyboardViewModel.closeOverlay()
                     service.uiState.value = service.uiState.value.copy(
                         showQuickSendForm = false,
@@ -539,12 +532,7 @@ internal fun rememberImeKeyboardCallbacks(
                 }
             },
             onHideBitwardenSearch = {
-                service.uiState.value = service.uiState.value.copy(
-                    bitwardenSearchVisible = false,
-                    bitwardenSearchFocused = false,
-                    enterKeyText = "发送",
-                )
-                BitwardenSearchEditTextHolder.editText = null
+                service.hideBitwardenPanels()
             },
             onBitwardenSearchFocusChange = { focused ->
                 service.uiState.value = service.uiState.value.copy(

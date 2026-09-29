@@ -1428,6 +1428,14 @@ object KeysConfigHelper {
         return config.swipeDownEnglish[key.lowercase()]
     }
 
+    /**
+     * 未配置 swipe_down 时的默认：当前小写 → 下滑大写，当前大写 → 下滑小写。
+     */
+    fun getDefaultCaseToggleSwipeDown(key: String, isShifted: Boolean): String? {
+        if (key.length != 1 || !key[0].isLetter()) return null
+        return if (isShifted) key.lowercase() else key.uppercase()
+    }
+
     /** 获取下滑动作类型 */
     fun getSwipeDownAction(key: String, isAsciiMode: Boolean = false): GestureAction? {
         val configMap = if (isAsciiMode) _keyGestureConfigEn.value else _keyGestureConfig.value

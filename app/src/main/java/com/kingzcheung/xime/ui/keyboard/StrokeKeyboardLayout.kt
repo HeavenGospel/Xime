@@ -166,7 +166,10 @@ onKeyPressDown: ((String) -> Unit)?,
         )
     }
 
-    CompositionLocalProvider(LocalKeyCornerRadius provides keyCornerRadius) {
+    CompositionLocalProvider(
+        LocalKeyCornerRadius provides keyCornerRadius,
+        LocalKeyboardBoundsInRoot provides keyboardBounds,
+    ) {
     Box(
         modifier = modifier
             .onGloballyPositioned { coordinates ->

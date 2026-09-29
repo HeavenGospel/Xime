@@ -117,7 +117,10 @@ fun NumberKeyboardLayout(
         )
     }
 
-    CompositionLocalProvider(LocalKeyCornerRadius provides keyCornerRadius) {
+    CompositionLocalProvider(
+        LocalKeyCornerRadius provides keyCornerRadius,
+        LocalKeyboardBoundsInRoot provides keyboardBounds,
+    ) {
     Box(
         modifier = modifier
             .onGloballyPositioned { coordinates ->
@@ -256,7 +259,7 @@ private fun NumberRows(
     backKeyOnLeft: Boolean = false,
 ) {
     val symFontSize = if (compactMode) 14.sp else 18.sp
-    val keyFontSize = if (compactMode) 16.sp else androidx.compose.ui.unit.TextUnit.Unspecified
+    val keyFontSize = if (compactMode) 16.sp else 24.sp
     val ctrlFontSize = if (compactMode) 12.sp else androidx.compose.ui.unit.TextUnit.Unspecified
     val suppressCursorMove = LocalSuppressCursorMove.current
     val symbols = listOf("+", "-", "*", "/")
@@ -611,7 +614,7 @@ private fun NumberSymbolKey(
         Text(
             text = text,
             color = textColor,
-            fontSize = fontSize,
+            fontSize = (fontSize.value * LocalKeycapTextScale.current).sp,
             fontWeight = FontWeight.Normal,
             modifier = Modifier.padding(vertical = 2.dp),
             fontFamily = AppFonts.keyFontFamily

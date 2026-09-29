@@ -153,6 +153,10 @@ object ExtensionManager {
         val pluginCategories = mutableListOf<EmojiCategory>()
         
         try {
+            // 市场安装后 IME 进程可能尚未实例化；先按 XML enabled 拉起再取数
+            withContext(Dispatchers.IO) {
+                PluginManager.loadEnabledPlugins()
+            }
             val emojiPlugins = getEnabledEmojiPlugins(context)
             
             emojiPlugins.forEach { (pluginId, plugin) ->
@@ -173,11 +177,12 @@ object ExtensionManager {
                     val pluginIcon = extractPluginIcon(context, pluginId, plugin, pluginInfo)
 
                     for (subCatName in subCategoryNames) {
+                        // 分类浏览需要拉全量；搜索场景再另传较小 topK
                         val emojiItems = plugin.getEmojis(
                             com.kingzcheung.xime.plugin.core.api.EmojiQuery(
                                 category = subCatName,
                                 keyword = null,
-                                topK = 100
+                                topK = 2000
                             )
                         )
                         if (emojiItems.isEmpty()) {
@@ -185,6 +190,19 @@ object ExtensionManager {
                             Log.w(TAG, "getEmojis empty for $pluginId / $subCatName")
                         }
                         val emojiCap = pluginInfo?.capabilities?.emoji
+                        val hasImages = emojiItems.any { !it.imageUrl.isNullOrBlank() }
+                        val capColumns = emojiCap?.columns
+                        val capHeight = emojiCap?.itemHeightDp
+                        // 颜文字等纯文本项：manifest 里 itemHeightDp=30 过矮，抬到可读高度
+                        val itemHeight = when {
+                            hasImages -> capHeight ?: 60
+                            else -> maxOf(capHeight ?: 40, 48)
+                        }
+                        val columns = when {
+                            capColumns != null && capColumns > 0 -> capColumns
+                            hasImages -> 6
+                            else -> 3
+                        }
                         pluginCategories.add(
                             EmojiCategory(
                                 name = subCatName,
@@ -194,8 +212,8 @@ object ExtensionManager {
                                 isPlugin = true,
                                 pluginId = pluginId,
                                 emojiItems = emojiItems,
-                                layoutColumns = emojiCap?.columns ?: 8,
-                                layoutItemHeightDp = emojiCap?.itemHeightDp ?: 40
+                                layoutColumns = columns,
+                                layoutItemHeightDp = itemHeight
                             )
                         )
                     }
