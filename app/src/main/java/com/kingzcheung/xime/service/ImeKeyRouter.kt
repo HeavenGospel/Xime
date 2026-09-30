@@ -56,7 +56,9 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
         val hasComposing = candState.isComposing || candState.inputText.isNotEmpty()
         when (key) {
             "enter" -> {
-                if (hasComposing) {
+                // 有实际拼音/预编辑时：先上屏到内部 EditText，不触发关闭/退页。
+                // 无输入（含空组合态/空字段）时：直接 onEnter，允许回车退回编辑页。
+                if (hasComposing && candState.inputText.isNotEmpty()) {
                     val input = candState.inputText
                     service.mainHandler.post {
                         target()?.let { et ->
@@ -76,8 +78,22 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                             candidateActions = emptyList(),
                         )
                     }
-                    // 有组合态时只上屏，不触发关闭/保存等副作用
                     return
+                }
+                if (hasComposing) {
+                    service.mainHandler.post {
+                        service.rimeEngine.clearComposition()
+                        service.candidateState.value = service.candidateState.value.copy(
+                            inputText = "",
+                            preeditText = "",
+                            pendingEnglishText = "",
+                            candidates = emptyList(),
+                            candidateComments = emptyList(),
+                            associationCandidates = emptyList(),
+                            isComposing = false,
+                            candidateActions = emptyList(),
+                        )
+                    }
                 }
                 onEnter()
             }
@@ -160,40 +176,77 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
             return
         }
         if (service.uiState.value.bitwardenEditVisible && key != "ime_switch") {
-            routeKeysToEditText(
-                key = key,
-                isShifted = isShifted,
-                target = {
-                    BitwardenAppPickerEditTextHolder.editText
-                        ?: BitwardenEditFormHolders.get(
-                            service.uiState.value.bitwardenEditField,
-                            service.uiState.value.bitwardenEditCustomIndex,
-                            service.uiState.value.bitwardenEditCustomIsName,
-                        )
-                },
-                onEnter = {
-                    // App 选择搜索框：回车不保存
-                    if (BitwardenAppPickerEditTextHolder.editText != null) return@routeKeysToEditText
-                    service.mainHandler.post {
-                        kotlinx.coroutines.CoroutineScope(Dispatchers.Main).launch {
-                            val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(service)
-                            val result = withContext(Dispatchers.IO) { repo.saveEditing() }
-                            if (result.isSuccess) service.returnBitwardenAfterEdit()
+            if (service.uiState.value.bitwardenEditFocused) {
+                routeKeysToEditText(
+                    key = key,
+                    isShifted = isShifted,
+                    target = {
+                        BitwardenAppPickerEditTextHolder.editText
+                            ?: BitwardenEditFormHolders.get(
+                                service.uiState.value.bitwardenEditField,
+                                service.uiState.value.bitwardenEditCustomIndex,
+                                service.uiState.value.bitwardenEditCustomIsName,
+                            )
+                    },
+                    onEnter = {
+                        if (BitwardenAppPickerEditTextHolder.editText != null) return@routeKeysToEditText
+                        service.mainHandler.post {
+                            service.uiState.value = service.uiState.value.copy(
+                                bitwardenEditFocused = false,
+                                bitwardenKeyAreaKeyboard = false,
+                                enterKeyText = "发送",
+                            )
+                            BitwardenEditFormHolders.clear()
                         }
-                    }
-                },
-            )
-            return
+                    },
+                )
+                return
+            }
+            // 编辑表单浏览：吞键；已切换到键盘区则放行给宿主
+            if (!service.uiState.value.bitwardenKeyAreaKeyboard) return
         }
         if (service.uiState.value.bitwardenSearchVisible && key != "ime_switch") {
-            routeKeysToEditText(
-                key = key,
-                isShifted = isShifted,
-                target = { BitwardenSearchEditTextHolder.editText },
-                // 回车只收束拼音（若有），不关闭搜索列表
-                onEnter = {},
-            )
-            return
+            if (service.uiState.value.bitwardenSearchFocused) {
+                routeKeysToEditText(
+                    key = key,
+                    isShifted = isShifted,
+                    target = { BitwardenSearchEditTextHolder.editText },
+                    // 回车结束搜索输入，回到列表看结果（与字段条回车退回编辑页对称）
+                    onEnter = {
+                        service.mainHandler.post {
+                            service.uiState.value = service.uiState.value.copy(
+                                bitwardenSearchFocused = false,
+                                bitwardenKeyAreaKeyboard = false,
+                                enterKeyText = "发送",
+                            )
+                            val et = BitwardenSearchEditTextHolder.editText
+                            et?.clearFocus()
+                            et?.isCursorVisible = false
+                            et?.isFocusable = false
+                            et?.isFocusableInTouchMode = false
+                            BitwardenSearchEditTextHolder.editText = null
+                        }
+                    },
+                )
+                return
+            }
+            // 列表态：回车进入搜索（聚焦搜索框并切到键盘）
+            if (!service.uiState.value.bitwardenKeyAreaKeyboard) {
+                if (key == "enter" &&
+                    !service.uiState.value.bitwardenDetailVisible &&
+                    !service.uiState.value.bitwardenEditVisible
+                ) {
+                    service.mainHandler.post {
+                        service.uiState.value = service.uiState.value.copy(
+                            bitwardenSearchFocused = true,
+                            bitwardenKeyAreaKeyboard = true,
+                            enterKeyText = "完成",
+                        )
+                    }
+                }
+                return
+            }
+            // 键盘态放行给宿主
         }
         if (service.uiState.value.toolPanelInputFocused) {
             val candState = service.candidateState.value
@@ -607,31 +660,46 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                 "mode_change" -> {
                 }
                 "ime_switch" -> {
-                    // 乐观更新：立即按目标模式切换 UI（主键盘布局/面板字符），不等引擎异步切换，
-                    // 消除"进入面板/切键盘后才闪变"的可见延迟（引擎切换完成后权威同步，一致则无感）。
-                    val state = service.uiState.value
-                    val optimisticTarget = !state.isAsciiMode
-                    val schemaId = service.rimeEngine.getCurrentSchema()
-                    withContext(Dispatchers.Main) {
-                        service.uiState.value = service.uiState.value.copy(isAsciiMode = optimisticTarget)
-                        service.keyboardViewModel.dispatch(
-                            com.kingzcheung.xime.ui.keyboard.KeyboardDispatchAction.AsciiModeChanged(optimisticTarget, schemaId)
+                    val useSchemaPair = SettingsPreferences.isGlobeKeySchemaPair(service)
+                    if (useSchemaPair) {
+                        // 方案对：不乐观翻 ascii（保持中文全键，字母进目标方案）
+                        val t0 = System.nanoTime()
+                        FileLogger.i(
+                            XimeInputMethodService.TAG,
+                            "ime_switch schema_pair dispatched, thread=${Thread.currentThread().name}"
                         )
-                    }
-                    // 在 key-processing 线程上执行切换：toggleAsciiMode 阻塞等待 rimeLock
-                    // （部署/维护持锁时排队，完成后自动切换），不在主线程阻塞避免 ANR。
-                    val t0 = System.nanoTime()
-                    FileLogger.i(XimeInputMethodService.TAG, "ime_switch dispatched, ui ascii=${service.uiState.value.isAsciiMode}, thread=${Thread.currentThread().name}")
-                    if (!service.schemaController.switchInputMethod()) {
-                        // 引擎不可用：回滚乐观状态
+                        service.schemaController.switchInputMethod()
+                        FileLogger.i(
+                            XimeInputMethodService.TAG,
+                            "ime_switch schema_pair handled, total ${(System.nanoTime() - t0) / 1_000_000}ms"
+                        )
+                    } else {
+                        // 乐观更新：立即按目标模式切换 UI（主键盘布局/面板字符），不等引擎异步切换，
+                        // 消除"进入面板/切键盘后才闪变"的可见延迟（引擎切换完成后权威同步，一致则无感）。
+                        val state = service.uiState.value
+                        val optimisticTarget = !state.isAsciiMode
+                        val schemaId = service.rimeEngine.getCurrentSchema()
                         withContext(Dispatchers.Main) {
                             service.uiState.value = service.uiState.value.copy(isAsciiMode = optimisticTarget)
                             service.keyboardViewModel.dispatch(
                                 com.kingzcheung.xime.ui.keyboard.KeyboardDispatchAction.AsciiModeChanged(optimisticTarget, schemaId)
                             )
                         }
+                        // 在 key-processing 线程上执行切换：toggleAsciiMode 阻塞等待 rimeLock
+                        // （部署/维护持锁时排队，完成后自动切换），不在主线程阻塞避免 ANR。
+                        val t0 = System.nanoTime()
+                        FileLogger.i(XimeInputMethodService.TAG, "ime_switch dispatched, ui ascii=${service.uiState.value.isAsciiMode}, thread=${Thread.currentThread().name}")
+                        if (!service.schemaController.switchInputMethod()) {
+                            // 引擎不可用：回滚乐观状态
+                            withContext(Dispatchers.Main) {
+                                service.uiState.value = service.uiState.value.copy(isAsciiMode = !optimisticTarget)
+                                service.keyboardViewModel.dispatch(
+                                    com.kingzcheung.xime.ui.keyboard.KeyboardDispatchAction.AsciiModeChanged(!optimisticTarget, schemaId)
+                                )
+                            }
+                        }
+                        FileLogger.i(XimeInputMethodService.TAG, "ime_switch handled, total ${(System.nanoTime() - t0) / 1_000_000}ms (queue+rimeLock+main)")
                     }
-                    FileLogger.i(XimeInputMethodService.TAG, "ime_switch handled, total ${(System.nanoTime() - t0) / 1_000_000}ms (queue+rimeLock+main)")
                 }
                 "abc" -> {
                     service.calculatorEngine.clear()
@@ -885,7 +953,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                             candidates = filteredTexts,
                             candidateComments = filteredComments,
                             isComposing = capturedInputText.isNotEmpty(),
-                            associationCandidates = if ((capturedIsAscii || !service.isChineseMode) && pendingEnglish.isEmpty()) emptyList() else service.candidateState.value.associationCandidates,
+                            associationCandidates = if ((capturedIsAscii || service.shouldSkipAiAssociation()) && pendingEnglish.isEmpty()) emptyList() else service.candidateState.value.associationCandidates,
                             isShowingRecentClipboard = false,
                             hasNextPage = capturedHasNext,
                             hasPrevPage = capturedHasPrev,

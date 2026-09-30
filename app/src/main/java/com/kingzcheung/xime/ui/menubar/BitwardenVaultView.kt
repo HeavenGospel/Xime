@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,7 +54,9 @@ import androidx.compose.ui.unit.sp
 import com.kingzcheung.xime.bitwarden.BitwardenUiState
 import com.kingzcheung.xime.bitwarden.BitwardenVaultRepository
 import com.kingzcheung.xime.bitwarden.VaultLoginItem
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun BitwardenVaultView(
@@ -71,6 +74,7 @@ fun BitwardenVaultView(
 ) {
     val state by repository.state.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val accent = MaterialTheme.colorScheme.primary
     val sub = keyTextColor.copy(alpha = 0.65f)
 
@@ -128,7 +132,20 @@ fun BitwardenVaultView(
                 }
             }
             if (state is BitwardenUiState.Unlocked) {
-                IconButton(onClick = { scope.launch { repository.syncNow() } }) {
+                IconButton(onClick = {
+                    scope.launch {
+                        val result = repository.syncNow()
+                        withContext(Dispatchers.Main) {
+                            android.widget.Toast.makeText(
+                                context,
+                                if (result.isSuccess) "同步成功"
+                                else result.exceptionOrNull()?.message?.takeIf { it.isNotBlank() }
+                                    ?: "同步失败",
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    }
+                }) {
                     Icon(Icons.TwoTone.Sync, contentDescription = "同步", tint = keyTextColor)
                 }
                 IconButton(onClick = {
@@ -190,8 +207,8 @@ fun BitwardenVaultView(
                     accent = accent,
                     onQuery = repository::setQuery,
                     onFilter = repository::setFilterCurrentApp,
-                    onFillUsername = { onCommitText(it); onBack() },
-                    onFillPassword = { onCommitText(it); onBack() },
+                    onFillUsername = { onCommitText(it) },
+                    onFillPassword = { onCommitText(it) },
                     onEdit = { repository.beginEdit(it, packageName) },
                 )
                 is BitwardenUiState.Editing -> EditForm(
@@ -210,7 +227,24 @@ fun BitwardenVaultView(
                         )
                     },
                     onRegen = repository::regeneratePassword,
-                    onSave = { scope.launch { repository.saveEditing() } },
+                    onSave = {
+                        val isNew = s.existingId == null
+                        scope.launch {
+                            val ok = repository.saveEditing()
+                            withContext(Dispatchers.Main) {
+                                android.widget.Toast.makeText(
+                                    context,
+                                    when {
+                                        ok.isSuccess && isNew -> "已新增"
+                                        ok.isSuccess -> "已保存"
+                                        else -> ok.exceptionOrNull()?.message
+                                            ?.takeIf { it.isNotBlank() } ?: "保存失败"
+                                    },
+                                    android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                            }
+                        }
+                    },
                     onCancel = repository::cancelEditing,
                 )
                 is BitwardenUiState.Viewing -> OverlayDetail(
@@ -218,8 +252,8 @@ fun BitwardenVaultView(
                     keyTextColor = keyTextColor,
                     sub = sub,
                     accent = accent,
-                    onFillUsername = { onCommitText(it); onBack() },
-                    onFillPassword = { onCommitText(it); onBack() },
+                    onFillUsername = { onCommitText(it) },
+                    onFillPassword = { onCommitText(it) },
                     onEdit = { repository.beginEditFromViewing() },
                     onBack = repository::cancelViewing,
                 )

@@ -99,6 +99,7 @@ import com.kingzcheung.xime.settings.SchemaManager
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.ui.keyboard.KeyboardView
 import com.kingzcheung.xime.ui.keyboard.isT9Schema
+import com.kingzcheung.xime.ui.keyboard.isEnglishSchema
 import com.kingzcheung.xime.ui.theme.KeyboardThemes
 import com.kingzcheung.xime.ui.theme.keyboardBackground
 import kotlin.math.roundToInt
@@ -177,7 +178,7 @@ object BitwardenEditFormHolders {
 
     fun bind(
         field: BitwardenEditField,
-        et: android.widget.EditText,
+        et: android.widget.EditText?,
         customIndex: Int = 0,
         customIsName: Boolean = true,
     ) {
@@ -188,7 +189,10 @@ object BitwardenEditFormHolders {
             BitwardenEditField.URI -> uri = et
             BitwardenEditField.TOTP -> totp = et
             BitwardenEditField.NOTES -> notes = et
-            BitwardenEditField.CUSTOM -> custom[customKey(customIndex, customIsName)] = et
+            BitwardenEditField.CUSTOM -> {
+                val key = customKey(customIndex, customIsName)
+                if (et == null) custom.remove(key) else custom[key] = et
+            }
         }
     }
 
@@ -576,6 +580,23 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     
     private fun getPredictionFromPlugin(contextText: String) {
         predictionManager.getPrediction(contextText)
+    }
+
+    /**
+     * 是否跳过中文 AI/Prefix 联想。
+     * 英文方案（万象英文等）在方案对模式下 ascii 仍为 false，不能只靠 isAsciiMode。
+     */
+    internal fun shouldSkipAiAssociation(): Boolean {
+        if (!isChineseMode) return true
+        if (uiState.value.isAsciiMode) return true
+        val schemaId = when {
+            uiState.value.currentSchemaId.isNotBlank() -> uiState.value.currentSchemaId
+            RimeEngine.isInitialized() -> rimeEngine.getCurrentSchema()
+            else -> SettingsPreferences.getCurrentSchema(this)
+        }
+        if (isEnglishSchema(schemaId, uiState.value.schemaName)) return true
+        val globeEn = SettingsPreferences.getGlobeEnglishSchema(this)
+        return globeEn.isNotBlank() && schemaId == globeEn
     }
     
     private fun initRimeEngine() {
@@ -1018,20 +1039,36 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     }
 
     /**
-     * 仅隐藏 Bitwarden 面板 UI，保留仓库里的 Viewing / Editing / query，
-     * 下次打开可回到详情或编辑（与搜索词记忆一致）。
+     * 关闭 Bitwarden 面板并恢复默认：取消详情/编辑会话、清空搜索词。
+     * 再次点开盾牌从搜索列表默认态开始，不恢复上次详情/编辑。
      */
     internal fun hideBitwardenPanels() {
         val wasOpen = uiState.value.bitwardenSearchVisible ||
             uiState.value.bitwardenDetailVisible ||
             uiState.value.bitwardenEditVisible ||
             uiState.value.bitwardenPinVisible
+        val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(this)
+        when (repo.state.value) {
+            is com.kingzcheung.xime.bitwarden.BitwardenUiState.Editing -> repo.cancelEditing()
+            is com.kingzcheung.xime.bitwarden.BitwardenUiState.Viewing -> repo.cancelViewing()
+            else -> Unit
+        }
+        // cancelEditing 若从详情进入会回到 Viewing，再清一次
+        if (repo.state.value is com.kingzcheung.xime.bitwarden.BitwardenUiState.Viewing) {
+            repo.cancelViewing()
+        }
+        repo.setQuery("")
         uiState.value = uiState.value.copy(
             bitwardenSearchVisible = false,
             bitwardenSearchFocused = false,
+            bitwardenKeyAreaKeyboard = false,
+            bitwardenEditScrollPx = 0,
             bitwardenDetailVisible = false,
             bitwardenEditVisible = false,
             bitwardenEditFocused = false,
+            bitwardenEditField = BitwardenEditField.NAME,
+            bitwardenEditCustomIndex = 0,
+            bitwardenEditCustomIsName = true,
             bitwardenPinVisible = false,
             bitwardenPinFocused = false,
             bitwardenPinError = null,
@@ -1040,6 +1077,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         BitwardenSearchEditTextHolder.editText = null
         BitwardenPinEditTextHolder.editText = null
         BitwardenEditFormHolders.clear()
+        BitwardenAppPickerEditTextHolder.editText = null
         if (wasOpen) invalidateBitwardenPinIfEveryOpen()
     }
 
@@ -1062,8 +1100,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     }
 
     /**
-     * 打开 Bitwarden 面板：若仓库仍是 Viewing/Editing 则恢复详情/编辑，
-     * 否则打开搜索（保留 query / 滚动）。
+     * 打开 Bitwarden：默认搜索栏 + 键盘区，不恢复详情/编辑。
      */
     internal fun openBitwardenSearchPanel() {
         closeBitwardenPin()
@@ -1072,41 +1109,20 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         val pkg = currentInputEditorInfo?.packageName
         val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(this)
         repo.refreshHost(pkg)
-        when (repo.state.value) {
-            is com.kingzcheung.xime.bitwarden.BitwardenUiState.Viewing -> {
-                uiState.value = uiState.value.copy(
-                    showQuickSendForm = false,
-                    bitwardenSearchVisible = false,
-                    bitwardenSearchFocused = false,
-                    bitwardenDetailVisible = true,
-                    bitwardenEditVisible = false,
-                    bitwardenEditFocused = false,
-                    enterKeyText = "发送",
-                )
-            }
-            is com.kingzcheung.xime.bitwarden.BitwardenUiState.Editing -> {
-                uiState.value = uiState.value.copy(
-                    showQuickSendForm = false,
-                    bitwardenSearchVisible = false,
-                    bitwardenSearchFocused = false,
-                    bitwardenDetailVisible = false,
-                    bitwardenEditVisible = true,
-                    bitwardenEditFocused = true,
-                    bitwardenEditField = BitwardenEditField.NAME,
-                    enterKeyText = "保存",
-                )
-            }
-            else -> {
-                uiState.value = uiState.value.copy(
-                    showQuickSendForm = false,
-                    bitwardenSearchVisible = true,
-                    bitwardenSearchFocused = true,
-                    bitwardenEditVisible = false,
-                    bitwardenDetailVisible = false,
-                    enterKeyText = "搜索",
-                )
-            }
-        }
+        uiState.value = uiState.value.copy(
+            showQuickSendForm = false,
+            bitwardenSearchVisible = true,
+            bitwardenSearchFocused = false,
+            bitwardenKeyAreaKeyboard = true,
+            bitwardenDetailVisible = false,
+            bitwardenEditVisible = false,
+            bitwardenEditFocused = false,
+            bitwardenEditField = BitwardenEditField.NAME,
+            bitwardenPinVisible = false,
+            bitwardenPinFocused = false,
+            bitwardenPinError = null,
+            enterKeyText = "发送",
+        )
     }
 
     /** 真正离开详情：取消 Viewing 并隐藏（详情页点「返回」用）。 */
@@ -1148,10 +1164,12 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             bitwardenEditVisible = false,
             bitwardenEditFocused = false,
             bitwardenEditField = BitwardenEditField.NAME,
+            bitwardenEditScrollPx = 0,
             bitwardenDetailVisible = toDetail,
-            bitwardenSearchVisible = !toDetail,
-            bitwardenSearchFocused = !toDetail,
-            enterKeyText = if (toDetail) "发送" else "搜索",
+            bitwardenSearchVisible = true,
+            bitwardenSearchFocused = false,
+            bitwardenKeyAreaKeyboard = false,
+            enterKeyText = "发送",
         )
     }
 
@@ -1166,8 +1184,9 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             bitwardenEditVisible = false,
             bitwardenEditFocused = false,
             bitwardenSearchVisible = true,
-            bitwardenSearchFocused = true,
-            enterKeyText = "搜索",
+            bitwardenSearchFocused = false,
+            bitwardenKeyAreaKeyboard = false,
+            enterKeyText = "发送",
         )
     }
 
@@ -1201,7 +1220,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             runCatching { ic.setSelection(start, end) }
         }
         ic.commitText(text, 1)
-        if (isChineseMode) {
+        if (isChineseMode && !shouldSkipAiAssociation()) {
             predictionManager.appendCommittedText(text)
             predictionManager.recordInput(text)
         }
@@ -1235,13 +1254,11 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
 
     /**
      * Bitwarden 填账号/填密码：必须直写宿主 InputConnection。
-     * 若走 commitText，会因搜索面板可见被重定向进搜索框，宿主光标处无内容。
+     * 不走 commitText：搜索/编辑「内焦」时 commitText 会重定向进面板 EditText。
+     * 填入成功后不关闭密码库面板，方便连续填账号/密码/验证码。
      */
     internal fun commitBitwardenFill(text: String) {
-        if (text.isEmpty()) {
-            closeBitwardenSearch()
-            return
-        }
+        if (text.isEmpty()) return
         if (candidateState.value.isComposing || candidateState.value.inputText.isNotEmpty()) {
             rimeEngine.clearComposition()
             candidateState.value = candidateState.value.copy(
@@ -1255,14 +1272,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 candidateActions = emptyList(),
             )
         }
-        val ic = currentInputConnection
-        if (ic != null) {
-            ic.commitText(text, 1)
-        }
-        closeBitwardenSearch()
-        closeBitwardenDetail()
-        closeBitwardenEdit()
-        uiState.value = uiState.value.copy(enterKeyText = "发送")
+        currentInputConnection?.commitText(text, 1)
     }
 
     /**
@@ -1538,19 +1548,32 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                 // Overlay 页面（menubar/剪贴板/emoji 等）全屏覆盖键盘内容区：激活期间撑高面板
                 // 不参与计算，否则 Overlay 页面会带上表单/工具面板的额外高度（容器整体被撑高）。
                 val isOverlayPage = page is com.kingzcheung.xime.keyboard.KeyboardPage.Overlay
-                val quickSendFormExtra = if (state.showQuickSendForm && !isOverlayPage) 200 else 0
+                // 符号/表情/剪贴板/更多候选停靠在候选栏下，搜索栏等顶栏仍可见，高度附加项应保留
+                val isToolbarDockedOverlay = when ((page as? com.kingzcheung.xime.keyboard.KeyboardPage.Overlay)?.route) {
+                    is com.kingzcheung.xime.keyboard.OverlayRoute.Symbol,
+                    is com.kingzcheung.xime.keyboard.OverlayRoute.Emoji,
+                    is com.kingzcheung.xime.keyboard.OverlayRoute.Clipboard,
+                    is com.kingzcheung.xime.keyboard.OverlayRoute.CandidatePage -> true
+                    else -> false
+                }
+                val suppressTopPanelExtra = isOverlayPage && !isToolbarDockedOverlay
+                val quickSendFormExtra = if (state.showQuickSendForm && !suppressTopPanelExtra) 200 else 0
                 // 需与 ToolPanel.TOOL_PANEL_HEIGHT(170) 保持一致，否则容器比面板多/少一截，键盘被拉高。
                 // PASSIVE 纯展示面板走 Overlay 全屏覆盖（键盘窗口内容区），不撑高。
                 val toolPanelExtra = if (state.toolPanelVisible &&
                     state.toolPanelDisplay != "PASSIVE" &&
-                    !isOverlayPage
+                    !suppressTopPanelExtra
                 ) 170 else 0
                 val bitwardenExtra = when {
-                    isOverlayPage -> 0
-                    state.bitwardenEditVisible ||
-                        state.bitwardenDetailVisible ||
-                        state.bitwardenSearchVisible -> 280
+                    suppressTopPanelExtra -> 0
                     state.bitwardenPinVisible -> 160
+                    // 编辑会话（含字段失焦）：顶栏始终是字段条
+                    state.bitwardenEditVisible ->
+                        com.kingzcheung.xime.ui.keyboard.BITWARDEN_EDIT_FIELD_BAR_HEIGHT
+                    // 列表/详情：搜索栏常驻工具栏上方
+                    state.bitwardenSearchVisible ||
+                        state.bitwardenDetailVisible ->
+                        com.kingzcheung.xime.ui.keyboard.BITWARDEN_SEARCH_FIELD_BAR_HEIGHT
                     else -> 0
                 }
                 val overlayPanelExtra = quickSendFormExtra + toolPanelExtra + bitwardenExtra
@@ -1696,6 +1719,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                                     bitwardenPinError = state.bitwardenPinError,
                                     bitwardenSearchVisible = state.bitwardenSearchVisible,
                                     bitwardenSearchFocused = state.bitwardenSearchFocused,
+                                    bitwardenKeyAreaKeyboard = state.bitwardenKeyAreaKeyboard,
+                                    bitwardenEditScrollPx = state.bitwardenEditScrollPx,
                                     bitwardenEditVisible = state.bitwardenEditVisible,
                                     bitwardenEditFocused = state.bitwardenEditFocused,
                                     bitwardenEditField = state.bitwardenEditField,
@@ -1956,6 +1981,12 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         loadDarkModePreference()
 
+        // 宿主输入会话（再）启动：放下搜索内焦，避免按键仍进搜索框
+        // 仅非 restarting（换了输入目标）时清；同字段 restart 不在这里清，避免误伤
+        if (!restarting) {
+            releaseBitwardenInternalFocusForHost()
+        }
+
         // 敏感输入框（密码等）判定 + composing 去重标志重置（详见 PluginEventDispatcher）
         pluginEvents.onStartInput(attribute)
 
@@ -2144,6 +2175,35 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         }
         // 收藏选图返回：直接打开表情面板（记忆在收藏 Tab）
         maybeRestoreEmojiPanelAfterImport()
+    }
+
+    /**
+     * 点宿主输入框时：清掉 IME 内搜索/编辑逻辑焦点，按键还给宿主。
+     * 编辑字段条键盘页：只放下内焦，仍留在「字段条 + 键盘」（勿等同回车退回编辑表单）。
+     * 点 IME 内搜索框无法清宿主光标（系统限制，与搜狗一致）。
+     */
+    private fun releaseBitwardenInternalFocusForHost() {
+        val s = uiState.value
+        if (!s.bitwardenSearchFocused && !s.bitwardenEditFocused) return
+        val wasEdit = s.bitwardenEditFocused
+        uiState.value = s.copy(
+            bitwardenSearchFocused = false,
+            bitwardenEditFocused = false,
+            // 与搜索一致：点宿主后保持键盘区，字段条变为可点回的只读态
+            bitwardenKeyAreaKeyboard = true,
+            enterKeyText = "发送",
+        )
+        val searchEt = BitwardenSearchEditTextHolder.editText
+        searchEt?.clearFocus()
+        searchEt?.isCursorVisible = false
+        searchEt?.isFocusable = false
+        searchEt?.isFocusableInTouchMode = false
+        BitwardenSearchEditTextHolder.editText = null
+        // 仅离开编辑输入态时清字段 holders；勿在「仅搜索失焦」时误清
+        if (wasEdit) {
+            BitwardenEditFormHolders.clear()
+            BitwardenAppPickerEditTextHolder.editText = null
+        }
     }
 
     private var anchorCoords = floatArrayOf(0f, 0f, 0f, 0f)
@@ -2357,6 +2417,24 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         KeyboardThemes.refreshDynamicSchemes(this)
         clipboardSyncBridge?.pullOnce()
         maybeRestoreEmojiPanelAfterImport()
+        installBitwardenOutsideTouchWatch()
+    }
+
+    /**
+     * 监听点按 IME 窗外（宿主输入框等）：若搜索/编辑仍占逻辑焦点，立刻放下，
+     * 避免光标/按键继续绑在搜索框上。
+     */
+    private fun installBitwardenOutsideTouchWatch() {
+        val win = window?.window ?: return
+        win.addFlags(android.view.WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH)
+        win.decorView.setOnTouchListener { _, event ->
+            if (event.action == android.view.MotionEvent.ACTION_OUTSIDE) {
+                if (uiState.value.bitwardenSearchFocused || uiState.value.bitwardenEditFocused) {
+                    releaseBitwardenInternalFocusForHost()
+                }
+            }
+            false
+        }
     }
 
     /** 从收藏表情选图/裁剪页返回后，恢复到表情收藏面板。 */
@@ -2675,7 +2753,12 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
 
     private fun commitTextAndPredict(text: String, isPaste: Boolean) {
         commitTextSilently(text, isPaste)
-        if (!isChineseMode) return
+        if (shouldSkipAiAssociation()) {
+            mainHandler.post {
+                candidateState.value = candidateState.value.copy(associationCandidates = emptyList())
+            }
+            return
+        }
         // 纯符号/标点上屏：默认不触发联想（可在「智能联想 → 符号触发联想」打开）
         if (!SettingsPreferences.isSymbolsTriggerAssociationEnabled(this) &&
             isAssociationSymbolOnlyCommit(text)
@@ -2686,7 +2769,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             return
         }
         mainHandler.post {
-            if (!uiState.value.isAsciiMode) {
+            if (!shouldSkipAiAssociation()) {
                 getPredictionFromPlugin(predictionManager.lastCommittedText)
             }
         }
@@ -2757,7 +2840,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             }
             return
         }
-        if (uiState.value.bitwardenEditFocused || uiState.value.bitwardenEditVisible) {
+        // 仅「字段真正聚焦」时写入面板 EditText；栏可见但未聚焦时上屏到宿主（账号/密码框）
+        if (uiState.value.bitwardenEditFocused) {
             mainHandler.post {
                 val s = uiState.value
                 val et = BitwardenAppPickerEditTextHolder.editText
@@ -2775,7 +2859,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
             }
             return
         }
-        if (uiState.value.bitwardenSearchFocused || uiState.value.bitwardenSearchVisible) {
+        if (uiState.value.bitwardenSearchFocused) {
             mainHandler.post {
                 BitwardenSearchEditTextHolder.editText?.let { et ->
                     val start = et.selectionStart.coerceAtLeast(0)
@@ -2804,7 +2888,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         // 详见 PluginEventDispatcher）
         pluginEvents.onTextCommitted(text, isPaste)
 
-        if (isChineseMode) {
+        if (isChineseMode && !shouldSkipAiAssociation()) {
             predictionManager.appendCommittedText(text)
             predictionManager.recordInput(text)
         }
@@ -2815,9 +2899,9 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
      * 空格/标点上屏走全量 commitText 自带推理，无需调用此方法。
      */
     internal fun finalizeHandwritingPrediction() {
-        if (!isChineseMode) return
+        if (shouldSkipAiAssociation()) return
         mainHandler.post {
-            if (!uiState.value.isAsciiMode) {
+            if (!shouldSkipAiAssociation()) {
                 getPredictionFromPlugin(predictionManager.lastCommittedText)
             }
         }
@@ -2830,8 +2914,8 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
      */
     internal fun deleteBeforeCursor(count: Int) {
         val quickSendFocused = uiState.value.quickSendFormFocused
-        val bitwardenEdit = uiState.value.bitwardenEditVisible
-        val bitwardenSearch = uiState.value.bitwardenSearchVisible
+        val bitwardenEdit = uiState.value.bitwardenEditFocused
+        val bitwardenSearch = uiState.value.bitwardenSearchFocused
         val bitwardenPin = uiState.value.bitwardenPinVisible
         if (quickSendFocused || uiState.value.toolPanelInputFocused || bitwardenEdit || bitwardenSearch || bitwardenPin) {
             val et = when {

@@ -21,11 +21,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ViewList
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Sync
@@ -42,6 +44,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,6 +85,8 @@ fun BitwardenSearchPanel(
     onSync: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 浏览列表时不自动抢焦点，避免一点开就跳进输入态。 */
+    autoFocusSearch: Boolean = false,
 ) {
     val state by repository.state.collectAsState()
 
@@ -96,7 +101,6 @@ fun BitwardenSearchPanel(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(BITWARDEN_PANEL_HEIGHT.dp)
             .background(backgroundColor)
             .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
@@ -178,11 +182,11 @@ fun BitwardenSearchPanel(
                                             repository.setQuery(text)
                                         })
                                         BitwardenSearchEditTextHolder.editText = this
-                                        if (isFocused) post { requestFocus() }
+                                        if (autoFocusSearch && isFocused) post { requestFocus() }
                                     }
                                 },
                                 update = { et ->
-                                    if (isFocused && !et.hasFocus()) et.post { et.requestFocus() }
+                                    if (autoFocusSearch && isFocused && !et.hasFocus()) et.post { et.requestFocus() }
                                     val want = s.query
                                     if (et.text?.toString() != want) {
                                         et.setText(want)
@@ -429,6 +433,332 @@ private fun ActionIcon(
             tint = if (enabled) accentColor else accentColor.copy(alpha = 0.35f),
             modifier = Modifier.size(18.dp),
         )
+    }
+}
+
+/** 搜索栏挂在工具栏/候选栏上方的高度（点盾牌即出现）。 */
+internal const val BITWARDEN_SEARCH_FIELD_BAR_HEIGHT = 52
+
+/**
+ * 点盾牌后挂在候选栏上方的搜索栏（仅搜索框 + 操作按钮，不含列表）。
+ * 右侧：新增 / 刷新 / 切换（密码页↔键盘）；不放设置。
+ * [editable]=false（详情/编辑）：只读展示 query，不抢焦点；离开用切换按钮。
+ */
+@Composable
+fun BitwardenSearchFieldBar(
+    repository: BitwardenVaultRepository,
+    isFocused: Boolean,
+    /** 按键区当前是否为键盘（决定切换按钮图标方向）。 */
+    keyAreaIsKeyboard: Boolean,
+    /** 列表页可搜；详情/编辑页只读，避免抢走宿主账号密码框输入。 */
+    editable: Boolean = true,
+    backgroundColor: Color,
+    textColor: Color,
+    accentColor: Color,
+    cardBgColor: Color,
+    onFocusChange: (Boolean) -> Unit,
+    onAdd: () -> Unit,
+    onSync: () -> Unit,
+    onToggleKeyArea: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val state by repository.state.collectAsState()
+    val unlocked = state as? BitwardenUiState.Unlocked
+    // 详情/编辑不是 Unlocked，但仍要用 cachedQuery 展示已输入内容（只读不可点）
+    val query = unlocked?.query ?: repository.currentQuery
+    val loading = unlocked?.loading == true
+    val showKeyboardIcon = !keyAreaIsKeyboard && !isFocused
+    // factory 只创建一次，必须用最新值，否则从详情/编辑返回列表后仍卡在 editable=false
+    val editableState = rememberUpdatedState(editable)
+    val onFocusChangeState = rememberUpdatedState(onFocusChange)
+    val repositoryState = rememberUpdatedState(repository)
+
+    DisposableEffect(Unit) {
+        onDispose { BitwardenSearchEditTextHolder.editText = null }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(BITWARDEN_SEARCH_FIELD_BAR_HEIGHT.dp)
+            .background(backgroundColor)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(12.dp))
+                .background(cardBgColor.copy(alpha = 0.5f))
+                .then(
+                    if (isFocused && editable) {
+                        Modifier.background(accentColor.copy(alpha = 0.12f))
+                    } else {
+                        Modifier
+                    },
+                )
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = BitwardenIcons.Shield,
+                contentDescription = null,
+                tint = accentColor,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            AndroidView(
+                factory = { context ->
+                    android.widget.EditText(context).apply {
+                        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                        setTextColor(textColor.hashCode())
+                        setHintTextColor((textColor.copy(alpha = 0.4f)).hashCode())
+                        hint = "搜索名称 / 账号 / 备注"
+                        textSize = 15f
+                        isSingleLine = true
+                        gravity = Gravity.CENTER_VERTICAL or Gravity.START
+                        setPadding(4, 2, 4, 2)
+                        imeOptions = EditorInfo.IME_FLAG_NO_ENTER_ACTION
+                        showSoftInputOnFocus = false
+                        // 默认不可聚焦；仅逻辑聚焦时才 requestFocus 显示光标（搜狗式）。
+                        // 点宿主框清内部光标；点内部框无法清宿主光标（系统限制）。
+                        isFocusable = false
+                        isFocusableInTouchMode = false
+                        isCursorVisible = false
+                        // 详情/编辑只读：仍 enabled，避免灰掉已输入的搜索词
+                        isEnabled = true
+                        isClickable = editableState.value
+                        setText(query)
+                        setSelection(query.length)
+                        setOnClickListener {
+                            if (!editableState.value) return@setOnClickListener
+                            isFocusable = true
+                            isFocusableInTouchMode = true
+                            isCursorVisible = true
+                            BitwardenSearchEditTextHolder.editText = this
+                            onFocusChangeState.value(true)
+                            post { requestFocus() }
+                        }
+                        addTextChangedListener(SimpleTextWatcher { text ->
+                            if (editableState.value) repositoryState.value.setQuery(text)
+                        })
+                        BitwardenSearchEditTextHolder.editText = null
+                    }
+                },
+                update = { et ->
+                    et.isEnabled = true
+                    et.isClickable = editable
+                    val wantFocus = editable && isFocused
+                    if (wantFocus) {
+                        et.isFocusable = true
+                        et.isFocusableInTouchMode = true
+                        et.isCursorVisible = true
+                        BitwardenSearchEditTextHolder.editText = et
+                        if (!et.hasFocus()) et.post { et.requestFocus() }
+                    } else {
+                        BitwardenSearchEditTextHolder.editText = null
+                        et.isCursorVisible = false
+                        if (et.hasFocus()) et.clearFocus()
+                        et.isFocusable = false
+                        et.isFocusableInTouchMode = false
+                    }
+                    val want = (repository.state.value as? BitwardenUiState.Unlocked)?.query
+                        ?: repository.currentQuery
+                    if (et.text?.toString() != want) {
+                        et.setText(want)
+                        et.setSelection(want.length.coerceAtMost(et.text?.length ?: 0))
+                    }
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(36.dp),
+            )
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = "添加",
+                tint = accentColor,
+                modifier = Modifier
+                    .size(28.dp)
+                    .clickable(onClick = onAdd)
+                    .padding(4.dp),
+            )
+            Icon(
+                imageVector = Icons.Outlined.Sync,
+                contentDescription = "同步",
+                tint = if (loading) accentColor.copy(alpha = 0.4f) else accentColor,
+                modifier = Modifier
+                    .size(28.dp)
+                    .clickable(enabled = !loading, onClick = onSync)
+                    .padding(4.dp),
+            )
+            Icon(
+                imageVector = if (showKeyboardIcon) {
+                    Icons.Outlined.Keyboard
+                } else {
+                    Icons.AutoMirrored.Outlined.ViewList
+                },
+                contentDescription = if (showKeyboardIcon) "切换到键盘" else "切换到密码页",
+                tint = accentColor,
+                modifier = Modifier
+                    .size(28.dp)
+                    .clickable(onClick = onToggleKeyArea)
+                    .padding(4.dp),
+            )
+        }
+    }
+}
+
+/**
+ * 密码条目列表：只占按键区，不含搜索栏。
+ */
+@Composable
+fun BitwardenSearchListArea(
+    repository: BitwardenVaultRepository,
+    packageName: String?,
+    backgroundColor: Color,
+    textColor: Color,
+    accentColor: Color,
+    cardBgColor: Color,
+    onFillUsername: (String) -> Unit,
+    onFillPassword: (String) -> Unit,
+    onFillTotp: (String) -> Unit,
+    onOpenDetail: (VaultLoginItem) -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val state by repository.state.collectAsState()
+
+    LaunchedEffect(packageName) {
+        repository.refreshHost(packageName)
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(backgroundColor)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(12.dp))
+                .background(cardBgColor.copy(alpha = 0.5f))
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        ) {
+            when (val s = state) {
+                is BitwardenUiState.Unlocked -> {
+                    val query = s.query
+                    val pinnedIds = s.pinnedIds
+                    val items = remember(s.items, s.host.packageName, s.host.appLabel, query, pinnedIds) {
+                        s.items
+                            .filter { it.matchesQuery(query) }
+                            .sortedWith(
+                                compareByDescending<VaultLoginItem> {
+                                    if (it.id in pinnedIds || it.favorite) 1 else 0
+                                }.thenByDescending { it.hostMatchScore(s.host) },
+                            )
+                    }
+                    val listState = rememberLazyListState(
+                        initialFirstVisibleItemIndex = repository.listScrollIndex,
+                        initialFirstVisibleItemScrollOffset = repository.listScrollOffset,
+                    )
+                    val listScope = rememberCoroutineScope()
+                    val showScrollToTop by remember {
+                        derivedStateOf {
+                            listState.firstVisibleItemIndex > 0 ||
+                                listState.firstVisibleItemScrollOffset > 0
+                        }
+                    }
+                    LaunchedEffect(listState) {
+                        snapshotFlow {
+                            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+                        }
+                            .distinctUntilChanged()
+                            .collect { (index, offset) ->
+                                repository.setListScroll(index, offset)
+                            }
+                    }
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        if (items.isEmpty()) {
+                            Text(
+                                text = if (query.isBlank()) "无条目，点 + 添加" else "无匹配「$query」",
+                                color = textColor.copy(alpha = 0.5f),
+                                fontSize = 12.sp,
+                            )
+                        } else {
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                items(items, key = { it.id }) { item ->
+                                    SearchResultRow(
+                                        item = item,
+                                        matchedApp = item.matchesPackage(s.host.packageName),
+                                        textColor = textColor,
+                                        accentColor = accentColor,
+                                        cardBgColor = cardBgColor,
+                                        onOpenDetail = { onOpenDetail(item) },
+                                        onFillUsername = { onFillUsername(item.username) },
+                                        onFillPassword = { onFillPassword(item.password) },
+                                        onFillTotp = {
+                                            val code = item.totp?.let { BitwardenTotp.code(it) }
+                                            if (!code.isNullOrBlank()) onFillTotp(code)
+                                        },
+                                        pinned = item.id in pinnedIds || item.favorite,
+                                        onTogglePin = { repository.togglePinned(item.id) },
+                                    )
+                                }
+                            }
+                        }
+                        if (showScrollToTop) {
+                            Icon(
+                                imageVector = Icons.Filled.KeyboardArrowUp,
+                                contentDescription = "回到顶部",
+                                tint = accentColor,
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(cardBgColor.copy(alpha = 0.9f))
+                                    .clickable {
+                                        listScope.launch {
+                                            listState.animateScrollToItem(0)
+                                            repository.setListScroll(0, 0)
+                                        }
+                                    }
+                                    .padding(4.dp),
+                            )
+                        }
+                    }
+                }
+                else -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.Lock,
+                                contentDescription = null,
+                                tint = textColor,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("保险库未解锁", color = textColor, fontWeight = FontWeight.Medium)
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "请到设置 → Bitwarden 输入主密码解锁后再搜索。",
+                            color = textColor.copy(alpha = 0.6f),
+                            fontSize = 12.sp,
+                        )
+                        TextButton(onClick = onOpenSettings) {
+                            Text("前往设置", color = accentColor)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

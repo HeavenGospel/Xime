@@ -108,3 +108,20 @@ fun isT9Schema(schemaId: String, name: String = ""): Boolean {
     if (schemaId in knownT9SchemaIds) return true
     return schemaId.lowercase().contains("t9") || name.lowercase().contains("t9")
 }
+
+/**
+ * 判断是否为英文候选方案（如万象英文 / melt_eng）。
+ * 用于跳过中文 AI/Prefix 联想：方案对切换到英文时 ascii_mode 仍为 false。
+ */
+fun isEnglishSchema(schemaId: String, name: String = ""): Boolean {
+    if (schemaId.isBlank()) return false
+    val known = setOf("wanxiang_english", "melt_eng", "easy_en", "english")
+    if (schemaId in known) return true
+    val id = schemaId.lowercase()
+    val nm = name.lowercase()
+    return id.contains("english") ||
+        id.endsWith("_eng") ||
+        id == "eng" ||
+        nm.contains("english") ||
+        nm.contains("英文")
+}

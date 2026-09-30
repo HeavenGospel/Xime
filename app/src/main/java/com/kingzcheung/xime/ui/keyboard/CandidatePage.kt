@@ -1,7 +1,6 @@
 package com.kingzcheung.xime.ui.keyboard
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +17,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.VerticalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
@@ -33,14 +34,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class CandidatePageState(
@@ -78,7 +79,8 @@ data class CandidatePageCallbacks(
 )
 
 /**
- * 更多候选页：栏上未展示的词按可用区域铺满分页；右侧上/下键与候选区上下滑均可翻页。
+ * 更多候选页：栏上未展示的词按可用区域铺满分页；
+ * 候选区用 VerticalPager 跟手上下滑翻页，右侧上/下键带动画翻页。
  */
 @Composable
 fun CandidatePage(
@@ -100,7 +102,8 @@ fun CandidatePage(
     var assocMode by remember { mutableStateOf(false) }
     // 有栏上种子候选时不转圈；仅在完全无数据、只能等全量时才 loading
     var loading by remember { mutableStateOf(false) }
-    var pageIndex by remember { mutableIntStateOf(0) }
+    var dataEpoch by remember { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(
         state.candidates,
@@ -109,7 +112,7 @@ fun CandidatePage(
         state.barVisibleCount,
         callbacks.onLoadAllCandidates,
     ) {
-        pageIndex = 0
+        dataEpoch++
         val barSkip = if (state.barVisibleCount >= 0) state.barVisibleCount else state.candidates.size
         indexBase = barSkip
         assocMode = state.candidates.isEmpty() && state.associationCandidates.isNotEmpty()
@@ -212,18 +215,23 @@ fun CandidatePage(
                 }
             }
             val pageCount = (pageStarts.size - 1).coerceAtLeast(0)
-            val safePage = pageIndex.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
-            val pageOffset = if (pageCount == 0) 0 else pageStarts[safePage]
-            val pageEnd = if (pageCount == 0) 0 else pageStarts[safePage + 1]
-            val pageItems =
-                if (pageCount == 0) emptyList() else allItems.subList(pageOffset, pageEnd)
+            val pagerState = rememberPagerState(
+                initialPage = 0,
+                pageCount = { pageCount.coerceAtLeast(1) },
+            )
+            val safePage = pagerState.currentPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
             val hasPrevPage = safePage > 0
             val hasNextPage = safePage < pageCount - 1
-            val currentPage = rememberUpdatedState(safePage)
-            val totalPages = rememberUpdatedState(pageCount)
 
+            LaunchedEffect(dataEpoch) {
+                if (pagerState.currentPage != 0) {
+                    pagerState.scrollToPage(0)
+                }
+            }
             LaunchedEffect(pageCount) {
-                if (pageCount > 0 && pageIndex >= pageCount) pageIndex = pageCount - 1
+                if (pageCount > 0 && pagerState.currentPage >= pageCount) {
+                    pagerState.scrollToPage(pageCount - 1)
+                }
             }
 
             Row(
@@ -234,29 +242,7 @@ fun CandidatePage(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .padding(horizontal = 4.dp, vertical = 4.dp)
-                        .pointerInput(Unit) {
-                            val threshold = 48.dp.toPx()
-                            var accumulated = 0f
-                            detectVerticalDragGestures(
-                                onDragStart = { accumulated = 0f },
-                                onVerticalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    accumulated += dragAmount
-                                },
-                                onDragEnd = {
-                                    val cur = currentPage.value
-                                    val count = totalPages.value
-                                    when {
-                                        accumulated < -threshold && cur < count - 1 ->
-                                            pageIndex = cur + 1
-                                        accumulated > threshold && cur > 0 ->
-                                            pageIndex = cur - 1
-                                    }
-                                },
-                                onDragCancel = { accumulated = 0f },
-                            )
-                        },
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
                 ) {
                     when {
                         loading -> {
@@ -273,7 +259,7 @@ fun CandidatePage(
                                 )
                             }
                         }
-                        pageItems.isEmpty() -> {
+                        pageCount == 0 -> {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -288,42 +274,64 @@ fun CandidatePage(
                             }
                         }
                         else -> {
-                            FlowRow(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            // 页码叠在候选区底部，Pager 占满整高；装页逻辑已预留 indicatorReserve，
+                            // 避免像 weight+页码外置那样把最底一行裁掉。
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
                             ) {
-                                pageItems.forEachIndexed { index, (candidate, comment) ->
-                                    val absolute = indexBase + pageOffset + index
-                                    CandidatePageItem(
-                                        text = candidate,
-                                        comment = comment,
-                                        onClick = {
-                                            if (assocMode) {
-                                                callbacks.onAssociationSelect?.invoke(absolute)
-                                            } else {
-                                                callbacks.onCandidateSelect(
-                                                    absolute,
-                                                    candidate,
-                                                    comment,
-                                                )
-                                            }
-                                        },
-                                        textColor = state.textColor,
-                                        candidateFontFamily = candidateFontFamily,
-                                        commentFontFamily = commentFontFamily,
+                                VerticalPager(
+                                    state = pagerState,
+                                    modifier = Modifier.fillMaxSize(),
+                                    beyondViewportPageCount = 1,
+                                    userScrollEnabled = pageCount > 1,
+                                ) { page ->
+                                    val pageOffset = pageStarts[page]
+                                    val pageEnd = pageStarts[page + 1]
+                                    val pageItems = allItems.subList(pageOffset, pageEnd)
+                                    FlowRow(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .fillMaxSize(),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        pageItems.forEachIndexed { index, (candidate, comment) ->
+                                            val absolute = indexBase + pageOffset + index
+                                            CandidatePageItem(
+                                                text = candidate,
+                                                comment = comment,
+                                                onClick = {
+                                                    if (assocMode) {
+                                                        callbacks.onAssociationSelect?.invoke(absolute)
+                                                    } else {
+                                                        callbacks.onCandidateSelect(
+                                                            absolute,
+                                                            candidate,
+                                                            comment,
+                                                        )
+                                                    }
+                                                },
+                                                textColor = state.textColor,
+                                                candidateFontFamily = candidateFontFamily,
+                                                commentFontFamily = commentFontFamily,
+                                            )
+                                        }
+                                    }
+                                }
+                                if (pageCount > 1) {
+                                    Text(
+                                        text = "${safePage + 1} / $pageCount",
+                                        color = state.textColor.copy(alpha = 0.45f),
+                                        fontSize = 12.sp,
+                                        modifier = Modifier
+                                            .align(Alignment.BottomCenter)
+                                            .padding(bottom = 4.dp)
+                                            .fillMaxWidth(),
+                                        textAlign = TextAlign.Center,
                                     )
                                 }
-                            }
-                            if (pageCount > 1) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "${safePage + 1} / $pageCount",
-                                    color = state.textColor.copy(alpha = 0.45f),
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    textAlign = TextAlign.Center,
-                                )
                             }
                         }
                     }
@@ -333,9 +341,19 @@ fun CandidatePage(
                     sideWidth = sideWidth,
                     hasPrevPage = hasPrevPage,
                     hasNextPage = hasNextPage,
-                    onPrev = { pageIndex = (safePage - 1).coerceAtLeast(0) },
+                    onPrev = {
+                        if (hasPrevPage) {
+                            scope.launch {
+                                pagerState.animateScrollToPage(safePage - 1)
+                            }
+                        }
+                    },
                     onNext = {
-                        pageIndex = (safePage + 1).coerceAtMost((pageCount - 1).coerceAtLeast(0))
+                        if (hasNextPage) {
+                            scope.launch {
+                                pagerState.animateScrollToPage(safePage + 1)
+                            }
+                        }
                     },
                     sideKeyBgColor = state.sideKeyBgColor,
                     sideKeyFgColor = state.sideKeyFgColor,

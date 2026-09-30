@@ -101,6 +101,8 @@ data class KeyboardUiState(
     val bitwardenPinError: String? = null,
     val bitwardenSearchVisible: Boolean = false,
     val bitwardenSearchFocused: Boolean = false,
+    val bitwardenKeyAreaKeyboard: Boolean = false,
+    val bitwardenEditScrollPx: Int = 0,
     val bitwardenEditVisible: Boolean = false,
     val bitwardenEditFocused: Boolean = false,
     val bitwardenEditField: com.kingzcheung.xime.service.BitwardenEditField =

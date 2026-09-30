@@ -370,59 +370,53 @@ fun KeyboardView(
                     onSubmit = { pin -> callbacks.onBitwardenPinSubmit?.invoke(pin) },
                 )
             } else if (state.bitwardenEditVisible) {
+                // 编辑会话：顶栏始终是字段条（失焦后仍可点回），勿退化成只读搜索框
                 val bwContext = LocalContext.current
-                BitwardenEditFormArea(
+                val editKeyAreaIsKeyboard = state.bitwardenKeyAreaKeyboard ||
+                    state.bitwardenEditFocused
+                BitwardenEditFieldBar(
                     repository = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(bwContext),
-                    focusedField = state.bitwardenEditField,
+                    field = state.bitwardenEditField,
                     customIndex = state.bitwardenEditCustomIndex,
                     customIsName = state.bitwardenEditCustomIsName,
+                    imeFocused = state.bitwardenEditFocused,
+                    keyAreaIsKeyboard = editKeyAreaIsKeyboard,
                     backgroundColor = Color.Transparent,
                     textColor = keyTextColor,
                     accentColor = accentColor,
                     cardBgColor = keyBgColor,
-                    onClose = { callbacks.onHideBitwardenEdit?.invoke() },
-                    onFieldFocus = { field, idx, isName ->
-                        callbacks.onBitwardenEditFieldFocus?.invoke(field, idx, isName)
+                    onActivate = {
+                        callbacks.onBitwardenEditFieldFocus?.invoke(
+                            state.bitwardenEditField,
+                            state.bitwardenEditCustomIndex,
+                            state.bitwardenEditCustomIsName,
+                        )
                     },
+                    onDone = { callbacks.onBitwardenEditClearFocus?.invoke() },
+                    onToggleKeyArea = { callbacks.onBitwardenToggleKeyArea?.invoke() },
                 )
-            } else if (state.bitwardenDetailVisible) {
+            } else if (state.bitwardenSearchVisible || state.bitwardenDetailVisible) {
+                // 会话顶栏：列表/详情显示搜索栏
                 val bwContext = LocalContext.current
-                BitwardenDetailPanel(
+                val keyAreaIsKeyboard = state.bitwardenKeyAreaKeyboard ||
+                    state.bitwardenSearchFocused
+                BitwardenSearchFieldBar(
                     repository = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(bwContext),
-                    backgroundColor = Color.Transparent,
-                    textColor = keyTextColor,
-                    accentColor = accentColor,
-                    cardBgColor = keyBgColor,
-                    onBack = { callbacks.onHideBitwardenDetail?.invoke() },
-                    onEdit = { callbacks.onBitwardenDetailEdit?.invoke() },
-                    onFillUsername = { text -> callbacks.onBitwardenFill?.invoke(text) },
-                    onFillPassword = { text -> callbacks.onBitwardenFill?.invoke(text) },
-                    onFillTotp = { text -> callbacks.onBitwardenFill?.invoke(text) },
-                    onCopy = { text -> callbacks.onBitwardenCopy?.invoke(text) },
-                )
-            } else if (state.bitwardenSearchVisible) {
-                val bwContext = LocalContext.current
-                BitwardenSearchPanel(
-                    repository = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(bwContext),
-                    packageName = callbacks.hostPackageName?.invoke(),
                     isFocused = state.bitwardenSearchFocused,
+                    keyAreaIsKeyboard = keyAreaIsKeyboard,
+                    // 详情：搜索框只读；列表页才可搜
+                    editable = !state.bitwardenDetailVisible,
                     backgroundColor = Color.Transparent,
                     textColor = keyTextColor,
                     accentColor = accentColor,
                     cardBgColor = keyBgColor,
                     onFocusChange = { focused -> callbacks.onBitwardenSearchFocusChange?.invoke(focused) },
-                    onFillUsername = { text -> callbacks.onBitwardenFill?.invoke(text) },
-                    onFillPassword = { text -> callbacks.onBitwardenFill?.invoke(text) },
-                    onFillTotp = { text -> callbacks.onBitwardenFill?.invoke(text) },
-                    onOpenDetail = { item -> callbacks.onShowBitwardenDetail?.invoke(item) },
                     onAdd = { callbacks.onShowBitwardenEdit?.invoke() },
                     onSync = { callbacks.onBitwardenSync?.invoke() },
-                    onOpenSettings = {
-                        callbacks.onHideBitwardenSearch?.invoke()
-                        callbacks.onOpenBitwardenSettings?.invoke()
-                    },
+                    onToggleKeyArea = { callbacks.onBitwardenToggleKeyArea?.invoke() },
                 )
             }
+            // 搜索列表 / 详情 / 编辑表单：改在按键区渲染，不再叠在工具栏上方
 
             // ACTIVE 输入面板在候选栏上方（需要 EditText 输入，保留候选栏可见）；
             // PASSIVE 纯展示面板走 Overlay 全屏（KeyboardView 底部 Overlay 分支渲染 InfoPanel）
@@ -664,6 +658,86 @@ fun KeyboardView(
 
             val isMainKeyboard = page is KeyboardPage.Main
             if (isMainKeyboard) {
+                val bwBrowseInKeyArea =
+                    !state.bitwardenKeyAreaKeyboard &&
+                        !state.bitwardenSearchFocused &&
+                        !state.bitwardenEditFocused &&
+                        (
+                            state.bitwardenEditVisible ||
+                                state.bitwardenDetailVisible ||
+                                state.bitwardenSearchVisible
+                            )
+                // 浏览态：列表/详情/编辑表单置换按键区
+                if (bwBrowseInKeyArea) {
+                    val bwContext = LocalContext.current
+                    val fillMod = Modifier.weight(1f).fillMaxWidth()
+                    when {
+                        state.bitwardenEditVisible -> {
+                            BitwardenEditFormArea(
+                                repository = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(bwContext),
+                                focusedField = state.bitwardenEditField,
+                                customIndex = state.bitwardenEditCustomIndex,
+                                customIsName = state.bitwardenEditCustomIsName,
+                                backgroundColor = Color.Transparent,
+                                textColor = keyTextColor,
+                                accentColor = accentColor,
+                                cardBgColor = keyBgColor,
+                                onClose = { callbacks.onHideBitwardenEdit?.invoke() },
+                                onFieldFocus = { field, idx, isName ->
+                                    callbacks.onBitwardenEditFieldFocus?.invoke(field, idx, isName)
+                                },
+                                autoFocusFields = false,
+                                initialScrollPx = state.bitwardenEditScrollPx,
+                                onScrollSave = { px -> callbacks.onBitwardenEditScrollSave?.invoke(px) },
+                                onCustomFieldRemoved = { idx ->
+                                    callbacks.onBitwardenCustomFieldRemoved?.invoke(idx)
+                                },
+                                onAppPickerActiveChange = { active ->
+                                    callbacks.onBitwardenAppPickerActiveChange?.invoke(active)
+                                },
+                                modifier = fillMod,
+                            )
+                        }
+                        state.bitwardenDetailVisible -> {
+                            BitwardenDetailPanel(
+                                repository = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(bwContext),
+                                backgroundColor = Color.Transparent,
+                                textColor = keyTextColor,
+                                accentColor = accentColor,
+                                cardBgColor = keyBgColor,
+                                onBack = { callbacks.onHideBitwardenDetail?.invoke() },
+                                onEdit = { callbacks.onBitwardenDetailEdit?.invoke() },
+                                onFillUsername = { text -> callbacks.onBitwardenFill?.invoke(text) },
+                                onFillPassword = { text -> callbacks.onBitwardenFill?.invoke(text) },
+                                onFillTotp = { text -> callbacks.onBitwardenFill?.invoke(text) },
+                                onCopy = { text -> callbacks.onBitwardenCopy?.invoke(text) },
+                                modifier = fillMod,
+                            )
+                        }
+                        else -> {
+                            BitwardenSearchListArea(
+                                repository = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(bwContext),
+                                packageName = callbacks.hostPackageName?.invoke(),
+                                backgroundColor = Color.Transparent,
+                                textColor = keyTextColor,
+                                accentColor = accentColor,
+                                cardBgColor = keyBgColor,
+                                onFillUsername = { text -> callbacks.onBitwardenFill?.invoke(text) },
+                                onFillPassword = { text -> callbacks.onBitwardenFill?.invoke(text) },
+                                onFillTotp = { text -> callbacks.onBitwardenFill?.invoke(text) },
+                                onOpenDetail = { item -> callbacks.onShowBitwardenDetail?.invoke(item) },
+                                onOpenSettings = {
+                                    callbacks.onHideBitwardenSearch?.invoke()
+                                    callbacks.onOpenBitwardenSettings?.invoke()
+                                },
+                                modifier = fillMod,
+                            )
+                        }
+                    }
+                    if (state.keyboardBottomPaddingDp > 0) {
+                        Spacer(modifier = Modifier.height(state.keyboardBottomPaddingDp.dp))
+                    }
+                } else {
                 val mainType = (page as KeyboardPage.Main).type
                 when (mainType) {
                     MainType.FULL -> {
@@ -1061,6 +1135,7 @@ fun KeyboardView(
                         )
                     }
                 }
+                } // else: 非「浏览编辑页」时走原键盘
             }
 
             val isPanelKeyboard = page is KeyboardPage.Panel

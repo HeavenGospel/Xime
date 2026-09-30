@@ -48,6 +48,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
@@ -543,6 +544,12 @@ fun SchemaSettingsContent(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         item {
+                            GlobeKeySettingsSection(
+                                enabledSchemas = uiState.allSchemas.filter { it.schemaId in uiState.enabledSchemas },
+                            )
+                        }
+
+                        item {
                             Text(
                                 text = "已启用",
                                 style = MaterialTheme.typography.titleSmall,
@@ -859,3 +866,238 @@ private fun LocalPackageTag(text: String, color: androidx.compose.ui.graphics.Co
         )
     }
 }
+
+@Composable
+private fun GlobeKeySettingsSection(enabledSchemas: List<SchemaMeta>) {
+    val context = LocalContext.current
+    var mode by remember {
+        mutableStateOf(SettingsPreferences.getGlobeKeyMode(context))
+    }
+    var primaryId by remember {
+        mutableStateOf(SettingsPreferences.getGlobePrimarySchema(context))
+    }
+    var englishId by remember {
+        mutableStateOf(SettingsPreferences.getGlobeEnglishSchema(context))
+    }
+    var pickTarget by remember { mutableStateOf<String?>(null) } // "primary" | "english"
+
+    LaunchedEffect(enabledSchemas.map { it.schemaId }.joinToString()) {
+        SettingsPreferences.ensureGlobeSchemaPairDefaults(
+            context,
+            enabledSchemas.map { it.schemaId },
+        )
+        primaryId = SettingsPreferences.getGlobePrimarySchema(context)
+        englishId = SettingsPreferences.getGlobeEnglishSchema(context)
+    }
+
+    fun schemaLabel(id: String): String {
+        if (id.isBlank()) return "未设置"
+        return enabledSchemas.firstOrNull { it.schemaId == id }?.name?.takeIf { it.isNotBlank() }
+            ?: id
+    }
+
+    SettingsSection(title = "地球键") {
+        Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+            Text(
+                text = "行为",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        mode = SettingsPreferences.GLOBE_KEY_MODE_ASCII
+                        SettingsPreferences.setGlobeKeyMode(context, mode)
+                    }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(
+                    selected = mode == SettingsPreferences.GLOBE_KEY_MODE_ASCII,
+                    onClick = {
+                        mode = SettingsPreferences.GLOBE_KEY_MODE_ASCII
+                        SettingsPreferences.setGlobeKeyMode(context, mode)
+                    },
+                )
+                Column(modifier = Modifier.padding(start = 4.dp)) {
+                    Text("中/英模式", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "切换自带英文直打（ascii_mode）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        mode = SettingsPreferences.GLOBE_KEY_MODE_SCHEMA_PAIR
+                        SettingsPreferences.setGlobeKeyMode(context, mode)
+                        SettingsPreferences.ensureGlobeSchemaPairDefaults(
+                            context,
+                            enabledSchemas.map { it.schemaId },
+                        )
+                        primaryId = SettingsPreferences.getGlobePrimarySchema(context)
+                        englishId = SettingsPreferences.getGlobeEnglishSchema(context)
+                    }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(
+                    selected = mode == SettingsPreferences.GLOBE_KEY_MODE_SCHEMA_PAIR,
+                    onClick = {
+                        mode = SettingsPreferences.GLOBE_KEY_MODE_SCHEMA_PAIR
+                        SettingsPreferences.setGlobeKeyMode(context, mode)
+                        SettingsPreferences.ensureGlobeSchemaPairDefaults(
+                            context,
+                            enabledSchemas.map { it.schemaId },
+                        )
+                        primaryId = SettingsPreferences.getGlobePrimarySchema(context)
+                        englishId = SettingsPreferences.getGlobeEnglishSchema(context)
+                    },
+                )
+                Column(modifier = Modifier.padding(start = 4.dp)) {
+                    Text("切换方案对", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "在主方案与英文方案间切换（如万象拼音 ↔ 万象英文）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            if (mode == SettingsPreferences.GLOBE_KEY_MODE_SCHEMA_PAIR) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 12.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { pickTarget = "primary" }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("主方案", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            schemaLabel(primaryId),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text("选择", color = MaterialTheme.colorScheme.primary)
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { pickTarget = "english" }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("英文方案", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            schemaLabel(englishId),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text("选择", color = MaterialTheme.colorScheme.primary)
+                }
+                if (enabledSchemas.size < 2) {
+                    Text(
+                        "请至少启用两个方案（例如 wanxiang 与 wanxiang_english）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
+            }
+        }
+    }
+
+    if (pickTarget != null) {
+        val title = if (pickTarget == "primary") "选择主方案" else "选择英文方案"
+        AlertDialog(
+            onDismissRequest = { pickTarget = null },
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = { Text(title, fontWeight = FontWeight.SemiBold) },
+            text = {
+                if (enabledSchemas.isEmpty()) {
+                    Text("暂无已启用方案")
+                } else {
+                    Column {
+                        enabledSchemas.forEach { schema ->
+                            val selected = if (pickTarget == "primary") {
+                                schema.schemaId == primaryId
+                            } else {
+                                schema.schemaId == englishId
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        if (pickTarget == "primary") {
+                                            primaryId = schema.schemaId
+                                            SettingsPreferences.setGlobePrimarySchema(
+                                                context,
+                                                schema.schemaId,
+                                            )
+                                        } else {
+                                            englishId = schema.schemaId
+                                            SettingsPreferences.setGlobeEnglishSchema(
+                                                context,
+                                                schema.schemaId,
+                                            )
+                                        }
+                                        pickTarget = null
+                                    }
+                                    .padding(vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(
+                                    selected = selected,
+                                    onClick = {
+                                        if (pickTarget == "primary") {
+                                            primaryId = schema.schemaId
+                                            SettingsPreferences.setGlobePrimarySchema(
+                                                context,
+                                                schema.schemaId,
+                                            )
+                                        } else {
+                                            englishId = schema.schemaId
+                                            SettingsPreferences.setGlobeEnglishSchema(
+                                                context,
+                                                schema.schemaId,
+                                            )
+                                        }
+                                        pickTarget = null
+                                    },
+                                )
+                                Column(modifier = Modifier.padding(start = 4.dp)) {
+                                    Text(
+                                        schema.name.ifBlank { schema.schemaId },
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                    Text(
+                                        schema.schemaId,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { pickTarget = null }) { Text("关闭") }
+            },
+        )
+    }
+}
+

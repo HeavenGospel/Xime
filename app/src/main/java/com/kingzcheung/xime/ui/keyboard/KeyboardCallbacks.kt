@@ -126,6 +126,8 @@ data class KeyboardCallbacks(
     val onHideBitwardenPin: (() -> Unit)? = null,
     val onBitwardenPinSubmit: ((String) -> Unit)? = null,
     val onBitwardenSearchFocusChange: ((Boolean) -> Unit)? = null,
+    /** 密码页 ↔ 键盘：切换按键区，不触发搜索聚焦。 */
+    val onBitwardenToggleKeyArea: (() -> Unit)? = null,
     val onShowBitwardenEdit: (() -> Unit)? = null,
     val onHideBitwardenEdit: (() -> Unit)? = null,
     val onShowBitwardenDetail: ((com.kingzcheung.xime.bitwarden.VaultLoginItem) -> Unit)? = null,
@@ -138,6 +140,14 @@ data class KeyboardCallbacks(
         customIndex: Int,
         customIsName: Boolean,
     ) -> Unit)? = null,
+    /** 字段输入完成：回车/完成/切换 → 退回编辑表单页（不清草稿、不保存）。 */
+    val onBitwardenEditClearFocus: (() -> Unit)? = null,
+    /** 保存编辑表单滚动位置。 */
+    val onBitwardenEditScrollSave: ((Int) -> Unit)? = null,
+    /** 删除自定义字段：钳制字段条聚焦下标。 */
+    val onBitwardenCustomFieldRemoved: ((Int) -> Unit)? = null,
+    /** App 选择器：打开时切键盘并走内部搜索框。 */
+    val onBitwardenAppPickerActiveChange: ((Boolean) -> Unit)? = null,
     /** 手动同步保险库。 */
     val onBitwardenSync: (() -> Unit)? = null,
     /** 填账号/密码到宿主光标（直写 InputConnection，不经面板重定向）。 */

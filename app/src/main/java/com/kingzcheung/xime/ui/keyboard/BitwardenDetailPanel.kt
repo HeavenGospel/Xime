@@ -59,7 +59,6 @@ fun BitwardenDetailPanel(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(BITWARDEN_PANEL_HEIGHT.dp)
             .background(backgroundColor)
             .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {

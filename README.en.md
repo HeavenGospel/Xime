@@ -12,7 +12,7 @@
 > This is a **fork** of the official Android IME [ximeiorg/Xime](https://github.com/ximeiorg/Xime), with UX and feature enhancements for personal use.  
 > - Upstream: [https://github.com/ximeiorg/Xime](https://github.com/ximeiorg/Xime)  
 > - This fork: [https://github.com/HeavenGospel/Xime](https://github.com/HeavenGospel/Xime)  
-> - Version: **2.9.10**  
+> - Version: **3.0.0**  
 > - Change log (Chinese): [docs/changelog-2026-09-session.md](docs/changelog-2026-09-session.md)
 
 Official docs & ecosystem still follow upstream: [docs](https://ime.ximei.me) · [Windows](https://github.com/ximeiorg/winxime) · [Linux](https://github.com/ximeiorg/xime-wayland)
@@ -119,7 +119,7 @@ cd Xime
 ./gradlew assembleRelease
 ```
 
-Example artifact: `app/build/outputs/apk/release/Xime-2.9.10-arm64-v8a.apk`
+Example artifact: `app/build/outputs/apk/release/Xime-3.0.0-arm64-v8a.apk`
 
 ## Docs
 

@@ -54,6 +54,11 @@ internal class ImeSchemaController(private val service: XimeInputMethodService) 
             }
             service.rimeEngine.clearComposition()
         }
+
+        if (SettingsPreferences.isGlobeKeySchemaPair(service)) {
+            return switchSchemaPairByGlobeKey()
+        }
+
         // 由 ImeKeyRouter 在 key-processing 线程调用：toggleAsciiMode 阻塞等待 rimeLock
         // （部署/维护持锁时排队，完成后自动切换），不静默失败、不阻塞主线程。
         // 仅在 session 创建失败（引擎真正不可用）时返回 false。
@@ -77,6 +82,96 @@ internal class ImeSchemaController(private val service: XimeInputMethodService) 
             val schemaId = service.rimeEngine.getCurrentSchema()
             service.keyboardViewModel.dispatch(
                 com.kingzcheung.xime.ui.keyboard.KeyboardDispatchAction.AsciiModeChanged(ascii, schemaId)
+            )
+        }
+        return true
+    }
+
+    /**
+     * 地球键「方案对」模式：在主方案与英文方案间切换，保持中文全键布局（不走 ascii 直打）。
+     * 在 key-processing 线程调用（与 toggleAsciiMode 相同），避免主线程堵 rimeLock。
+     */
+    private suspend fun switchSchemaPairByGlobeKey(): Boolean {
+        val enabled = SchemaManager.getEnabledSchemas(service)
+        SettingsPreferences.ensureGlobeSchemaPairDefaults(service, enabled)
+        val primary = SettingsPreferences.getGlobePrimarySchema(service)
+        val english = SettingsPreferences.getGlobeEnglishSchema(service)
+        if (primary.isBlank() || english.isBlank()) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    service,
+                    "请先在「输入方案 → 地球键」里设置主方案和英文方案",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            return false
+        }
+        if (primary !in enabled || english !in enabled) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    service,
+                    "主/英文方案未启用，请到方案管理启用后再试",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            return false
+        }
+        val current = service.rimeEngine.getCurrentSchema()
+        val target = if (current == english) primary else english
+        FileLogger.i(
+            XimeInputMethodService.TAG,
+            "switchInputMethod: schema_pair current=$current -> $target (primary=$primary english=$english)"
+        )
+
+        if (target == HANDWRITING_SCHEMA_ID) {
+            withContext(Dispatchers.Main) {
+                switchSchema(target, showToast = false)
+            }
+            return service.rimeEngine.getCurrentSchema() == target ||
+                SettingsPreferences.getCurrentSchema(service) == target
+        }
+
+        com.kingzcheung.xime.handwriting.HandwritingEngine.release()
+        SettingsPreferences.setCurrentSchema(service, target)
+        applyPageSizeSetting(target)
+        if (!service.rimeEngine.switchSchema(target)) {
+            if (service.rimeEngine.isMaintaining()) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(service, "词库部署中，请稍后再切换方案", Toast.LENGTH_SHORT).show()
+                }
+                return false
+            }
+            val actual = service.rimeEngine.getCurrentSchema()
+            if (actual.isNotEmpty()) {
+                SettingsPreferences.setCurrentSchema(service, actual)
+            }
+            withContext(Dispatchers.Main) {
+                Toast.makeText(service, "方案未部署，请在方案管理中部署后再试", Toast.LENGTH_SHORT).show()
+            }
+            return false
+        }
+        // 方案对模式始终关闭 ascii 直打，字母继续进 Rime（万象英文等）
+        service.rimeEngine.setOption("ascii_mode", false)
+        service.rimeEngine.setOption("ascii_punct", false)
+
+        withContext(Dispatchers.Main) {
+            service.keyboardViewModel.switchMain(com.kingzcheung.xime.keyboard.MainType.FULL)
+            // 同步写 schemaId，避免 updateSchemaName 异步完成前仍按旧中文方案触发 AI 联想
+            service.uiState.value = service.uiState.value.copy(
+                isAsciiMode = false,
+                currentSchemaId = target,
+            )
+            service.sessionController.updateSchemaName()
+            // 切到英文方案时清掉中文 AI 联想，避免残留候选
+            if (com.kingzcheung.xime.ui.keyboard.isEnglishSchema(target) || target == english) {
+                service.predictionManager.clearCommittedText()
+                service.predictionManager.invalidatePendingPredictions()
+                service.candidateState.value =
+                    service.candidateState.value.copy(associationCandidates = emptyList())
+            }
+            service.updateUI()
+            service.keyboardViewModel.dispatch(
+                com.kingzcheung.xime.ui.keyboard.KeyboardDispatchAction.AsciiModeChanged(false, target)
             )
         }
         return true
@@ -270,7 +365,7 @@ internal class ImeSchemaController(private val service: XimeInputMethodService) 
         }
     }
 
-    internal fun switchSchema(schemaId: String) {
+    internal fun switchSchema(schemaId: String, showToast: Boolean = true) {
         if (schemaId == HANDWRITING_SCHEMA_ID) {
             // 检查手写模型文件是否已下载
             if (!com.kingzcheung.xime.handwriting.HandwritingEngine.hasModel(service)) {
@@ -327,7 +422,16 @@ internal class ImeSchemaController(private val service: XimeInputMethodService) 
             if (!service.rimeEngine.isAsciiMode()) {
                 service.rimeEngine.setOption("ascii_punct", false)
             }
+            service.uiState.value = service.uiState.value.copy(currentSchemaId = schemaId)
             service.sessionController.updateSchemaName()
+            if (com.kingzcheung.xime.ui.keyboard.isEnglishSchema(schemaId) ||
+                schemaId == SettingsPreferences.getGlobeEnglishSchema(service)
+            ) {
+                service.predictionManager.clearCommittedText()
+                service.predictionManager.invalidatePendingPredictions()
+                service.candidateState.value =
+                    service.candidateState.value.copy(associationCandidates = emptyList())
+            }
             service.updateUI()
             // 确保键盘布局与方案匹配（如 T9 九键不应被 switchMain 重置为全键盘）
             service.keyboardViewModel.dispatch(
@@ -335,7 +439,9 @@ internal class ImeSchemaController(private val service: XimeInputMethodService) 
                     service.rimeEngine.isAsciiMode(), schemaId
                 )
             )
-            Toast.makeText(service, "已切换输入方案", Toast.LENGTH_SHORT).show()
+            if (showToast) {
+                Toast.makeText(service, "已切换输入方案", Toast.LENGTH_SHORT).show()
+            }
         } catch (e: Exception) {
             Log.e(XimeInputMethodService.TAG, "Failed to switch schema", e)
         }

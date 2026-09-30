@@ -9,6 +9,14 @@ object SettingsPreferences {
     private const val KEY_CURRENT_SCHEMA = "current_schema"
     /** 双写标记：仅新版本双写后置 true，本地值才可信（旧版本只写 rime，本地是过时迁移值） */
     private const val KEY_CURRENT_SCHEMA_DUAL = "current_schema_dual"
+
+    /** 地球键：切换 Rime ascii_mode（自带英文直打）。 */
+    const val GLOBE_KEY_MODE_ASCII = "ascii"
+    /** 地球键：在「主方案 / 英文方案」之间切换（如 wanxiang ↔ wanxiang_english）。 */
+    const val GLOBE_KEY_MODE_SCHEMA_PAIR = "schema_pair"
+    private const val KEY_GLOBE_KEY_MODE = "globe_key_mode"
+    private const val KEY_GLOBE_PRIMARY_SCHEMA = "globe_primary_schema"
+    private const val KEY_GLOBE_ENGLISH_SCHEMA = "globe_english_schema"
     private const val KEY_DEPLOYMENT_DONE = "deployment_done"
     private const val KEY_BUILTIN_SCHEMAS_MERGED = "builtin_schemas_merged"
     private const val KEY_DEPLOYMENT_HASH = "deployment_hash"
@@ -200,6 +208,72 @@ object SettingsPreferences {
             }
         } catch (_: Throwable) {
         }
+    }
+
+    fun getGlobeKeyMode(context: Context): String {
+        val raw = getPrefs(context).getString(KEY_GLOBE_KEY_MODE, GLOBE_KEY_MODE_ASCII)
+            ?: GLOBE_KEY_MODE_ASCII
+        return if (raw == GLOBE_KEY_MODE_SCHEMA_PAIR) GLOBE_KEY_MODE_SCHEMA_PAIR
+        else GLOBE_KEY_MODE_ASCII
+    }
+
+    fun setGlobeKeyMode(context: Context, mode: String) {
+        val value = if (mode == GLOBE_KEY_MODE_SCHEMA_PAIR) GLOBE_KEY_MODE_SCHEMA_PAIR
+        else GLOBE_KEY_MODE_ASCII
+        getPrefs(context).edit().putString(KEY_GLOBE_KEY_MODE, value).apply()
+    }
+
+    fun isGlobeKeySchemaPair(context: Context): Boolean =
+        getGlobeKeyMode(context) == GLOBE_KEY_MODE_SCHEMA_PAIR
+
+    fun getGlobePrimarySchema(context: Context): String =
+        getPrefs(context).getString(KEY_GLOBE_PRIMARY_SCHEMA, "") ?: ""
+
+    fun setGlobePrimarySchema(context: Context, schemaId: String) {
+        getPrefs(context).edit().putString(KEY_GLOBE_PRIMARY_SCHEMA, schemaId).apply()
+    }
+
+    fun getGlobeEnglishSchema(context: Context): String =
+        getPrefs(context).getString(KEY_GLOBE_ENGLISH_SCHEMA, "") ?: ""
+
+    fun setGlobeEnglishSchema(context: Context, schemaId: String) {
+        getPrefs(context).edit().putString(KEY_GLOBE_ENGLISH_SCHEMA, schemaId).apply()
+    }
+
+    /**
+     * 为「方案对」模式补默认：主方案=当前方案；英文方案优先
+     * wanxiang_english → melt_eng → easy_en → 已启用里名称/id 含 english/eng 的第一项。
+     */
+    fun ensureGlobeSchemaPairDefaults(context: Context, enabledSchemaIds: List<String>) {
+        val prefs = getPrefs(context)
+        val editor = prefs.edit()
+        var changed = false
+        if (getGlobePrimarySchema(context).isBlank()) {
+            val current = getCurrentSchema(context)
+            val primary = when {
+                current.isNotBlank() && current != "handwriting" -> current
+                enabledSchemaIds.isNotEmpty() -> enabledSchemaIds.first()
+                else -> ""
+            }
+            if (primary.isNotBlank()) {
+                editor.putString(KEY_GLOBE_PRIMARY_SCHEMA, primary)
+                changed = true
+            }
+        }
+        if (getGlobeEnglishSchema(context).isBlank()) {
+            val preferred = listOf("wanxiang_english", "melt_eng", "easy_en")
+            val hit = preferred.firstOrNull { it in enabledSchemaIds }
+                ?: enabledSchemaIds.firstOrNull { id ->
+                    val lower = id.lowercase()
+                    lower.contains("english") || lower.endsWith("_eng") || lower == "eng"
+                }
+                ?: ""
+            if (hit.isNotBlank()) {
+                editor.putString(KEY_GLOBE_ENGLISH_SCHEMA, hit)
+                changed = true
+            }
+        }
+        if (changed) editor.apply()
     }
     
     fun isDeploymentDone(context: Context): Boolean {

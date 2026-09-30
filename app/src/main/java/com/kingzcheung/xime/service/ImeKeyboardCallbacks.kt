@@ -245,40 +245,59 @@ internal fun rememberImeKeyboardCallbacks(
             onExpandedCandidateSelect = { index, text, comment ->
                 service.keyRouter.selectExpandedCandidate(index, text, comment)
             },
-            onCursorMove = { direction ->
-                val ic = service.currentInputConnection
-                if (ic != null && direction != 0) {
-                    service.feedbackManager.cursorMoveHaptic(view)
-                    if (SettingsPreferences.getInputTextLocation(service) == SettingsPreferences.INPUT_TEXT_INPUT_BOX &&
-                        service.candidateState.value.isComposing
-                    ) {
-                        // 输入框模式：移动光标前先结束 composing 并清空 RIME 组成，
-                        // 避免再次输入时 composing 区域与光标位置错乱
-                        ic.finishComposingText()
-                        service.keyRouter.postRimeJob {
-                            service.rimeEngine.clearComposition()
-                            withContext(Dispatchers.Main) {
-                                service.mainHandler.post { service.updateUI() }
-                            }
+            onCursorMove = onCursorMove@{ direction ->
+                if (direction == 0) return@onCursorMove
+                service.feedbackManager.cursorMoveHaptic(view)
+                // 密码库搜索/字段内焦：左右滑移动内部 EditText 光标，不要动宿主
+                val ui = service.uiState.value
+                val internalEt = when {
+                    ui.bitwardenEditFocused -> BitwardenAppPickerEditTextHolder.editText
+                        ?: BitwardenEditFormHolders.get(
+                            ui.bitwardenEditField,
+                            ui.bitwardenEditCustomIndex,
+                            ui.bitwardenEditCustomIsName,
+                        )
+                    ui.bitwardenSearchFocused -> BitwardenSearchEditTextHolder.editText
+                    ui.bitwardenPinFocused -> BitwardenPinEditTextHolder.editText
+                    else -> null
+                }
+                if (internalEt != null) {
+                    val textLen = internalEt.text?.length ?: 0
+                    val cur = internalEt.selectionStart.coerceIn(0, textLen)
+                    val newPos = (cur + direction).coerceIn(0, textLen)
+                    internalEt.setSelection(newPos)
+                    return@onCursorMove
+                }
+                val ic = service.currentInputConnection ?: return@onCursorMove
+                if (SettingsPreferences.getInputTextLocation(service) == SettingsPreferences.INPUT_TEXT_INPUT_BOX &&
+                    service.candidateState.value.isComposing
+                ) {
+                    // 输入框模式：移动光标前先结束 composing 并清空 RIME 组成，
+                    // 避免再次输入时 composing 区域与光标位置错乱
+                    ic.finishComposingText()
+                    service.keyRouter.postRimeJob {
+                        service.rimeEngine.clearComposition()
+                        withContext(Dispatchers.Main) {
+                            service.mainHandler.post { service.updateUI() }
                         }
                     }
-                    var movedBySelection = false
-                    try {
-                        val req = android.view.inputmethod.ExtractedTextRequest()
-                        val extracted = ic.getExtractedText(req, 0)
-                        if (extracted != null && extracted.selectionStart >= 0) {
-                            val newPos = (extracted.selectionStart + direction)
-                                .coerceIn(0, extracted.text?.length ?: 0)
-                            ic.setSelection(newPos, newPos)
-                            movedBySelection = true
-                        }
-                    } catch (_: Exception) {}
-                    if (!movedBySelection) {
-                        val keyCode = if (direction < 0) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT
-                        repeat(abs(direction)) {
-                            ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
-                            ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
-                        }
+                }
+                var movedBySelection = false
+                try {
+                    val req = android.view.inputmethod.ExtractedTextRequest()
+                    val extracted = ic.getExtractedText(req, 0)
+                    if (extracted != null && extracted.selectionStart >= 0) {
+                        val newPos = (extracted.selectionStart + direction)
+                            .coerceIn(0, extracted.text?.length ?: 0)
+                        ic.setSelection(newPos, newPos)
+                        movedBySelection = true
+                    }
+                } catch (_: Exception) {}
+                if (!movedBySelection) {
+                    val keyCode = if (direction < 0) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT
+                    repeat(abs(direction)) {
+                        ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+                        ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
                     }
                 }
             },
@@ -535,10 +554,75 @@ internal fun rememberImeKeyboardCallbacks(
                 service.hideBitwardenPanels()
             },
             onBitwardenSearchFocusChange = { focused ->
-                service.uiState.value = service.uiState.value.copy(
-                    bitwardenSearchFocused = focused,
-                    enterKeyText = if (focused) "搜索" else service.uiState.value.enterKeyText,
-                )
+                val s = service.uiState.value
+                // 详情/编辑页搜索框只读，忽略聚焦（回列表用「返回」，切键盘用切换按钮）
+                if (!(s.bitwardenDetailVisible || s.bitwardenEditVisible)) {
+                    if (focused) {
+                        service.uiState.value = s.copy(
+                            bitwardenSearchVisible = true,
+                            bitwardenSearchFocused = true,
+                            bitwardenKeyAreaKeyboard = true,
+                            bitwardenDetailVisible = false,
+                            bitwardenEditVisible = false,
+                            bitwardenEditFocused = false,
+                            bitwardenEditScrollPx = 0,
+                            enterKeyText = "完成",
+                        )
+                    } else {
+                        service.uiState.value = s.copy(
+                            bitwardenSearchFocused = false,
+                            enterKeyText = "发送",
+                        )
+                    }
+                }
+            },
+            onBitwardenToggleKeyArea = {
+                val s = service.uiState.value
+                val showingKeyboard = s.bitwardenKeyAreaKeyboard ||
+                    s.bitwardenSearchFocused ||
+                    s.bitwardenEditFocused
+                if (showingKeyboard) {
+                    // 切到密码页：按仓库状态恢复详情/编辑，否则列表
+                    val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(service)
+                    val next = when (repo.state.value) {
+                        is com.kingzcheung.xime.bitwarden.BitwardenUiState.Editing -> s.copy(
+                            bitwardenKeyAreaKeyboard = false,
+                            bitwardenSearchFocused = false,
+                            bitwardenEditFocused = false,
+                            bitwardenEditVisible = true,
+                            bitwardenDetailVisible = false,
+                            enterKeyText = "发送",
+                        )
+                        is com.kingzcheung.xime.bitwarden.BitwardenUiState.Viewing -> s.copy(
+                            bitwardenKeyAreaKeyboard = false,
+                            bitwardenSearchFocused = false,
+                            bitwardenEditFocused = false,
+                            bitwardenDetailVisible = true,
+                            bitwardenEditVisible = false,
+                            enterKeyText = "发送",
+                        )
+                        else -> s.copy(
+                            bitwardenKeyAreaKeyboard = false,
+                            bitwardenSearchFocused = false,
+                            bitwardenEditFocused = false,
+                            bitwardenDetailVisible = false,
+                            bitwardenEditVisible = false,
+                            enterKeyText = "搜索",
+                        )
+                    }
+                    service.uiState.value = next
+                    BitwardenSearchEditTextHolder.editText = null
+                    BitwardenEditFormHolders.clear()
+                    BitwardenAppPickerEditTextHolder.editText = null
+                } else {
+                    // 切到键盘，不聚焦搜索框
+                    service.uiState.value = s.copy(
+                        bitwardenKeyAreaKeyboard = true,
+                        bitwardenSearchFocused = false,
+                        bitwardenEditFocused = false,
+                        enterKeyText = "发送",
+                    )
+                }
             },
             onShowBitwardenEdit = {
                 service.closeToolPanel()
@@ -549,13 +633,15 @@ internal fun rememberImeKeyboardCallbacks(
                 }
                 service.keyboardViewModel.closeOverlay()
                 service.uiState.value = service.uiState.value.copy(
-                    bitwardenSearchVisible = false,
+                    bitwardenSearchVisible = true,
                     bitwardenSearchFocused = false,
+                    bitwardenKeyAreaKeyboard = false,
                     bitwardenDetailVisible = false,
                     bitwardenEditVisible = true,
-                    bitwardenEditFocused = true,
+                    bitwardenEditFocused = false,
                     bitwardenEditField = BitwardenEditField.NAME,
-                    enterKeyText = "保存",
+                    bitwardenEditScrollPx = 0,
+                    enterKeyText = "发送",
                 )
             },
             onHideBitwardenEdit = {
@@ -568,9 +654,11 @@ internal fun rememberImeKeyboardCallbacks(
                 val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(service)
                 repo.beginView(item, pkg)
                 service.uiState.value = service.uiState.value.copy(
-                    bitwardenSearchVisible = false,
+                    bitwardenSearchVisible = true,
                     bitwardenSearchFocused = false,
+                    bitwardenKeyAreaKeyboard = false,
                     bitwardenEditVisible = false,
+                    bitwardenEditFocused = false,
                     bitwardenDetailVisible = true,
                     enterKeyText = "发送",
                 )
@@ -582,11 +670,14 @@ internal fun rememberImeKeyboardCallbacks(
                 val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(service)
                 repo.beginEditFromViewing()
                 service.uiState.value = service.uiState.value.copy(
+                    bitwardenSearchVisible = true,
                     bitwardenDetailVisible = false,
                     bitwardenEditVisible = true,
-                    bitwardenEditFocused = true,
+                    bitwardenEditFocused = false,
+                    bitwardenKeyAreaKeyboard = false,
                     bitwardenEditField = BitwardenEditField.NAME,
-                    enterKeyText = "保存",
+                    bitwardenEditScrollPx = 0,
+                    enterKeyText = "发送",
                 )
             },
             onEditBitwardenItem = { item ->
@@ -595,23 +686,86 @@ internal fun rememberImeKeyboardCallbacks(
                 val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(service)
                 repo.beginEdit(item, pkg)
                 service.uiState.value = service.uiState.value.copy(
-                    bitwardenSearchVisible = false,
+                    bitwardenSearchVisible = true,
                     bitwardenSearchFocused = false,
+                    bitwardenKeyAreaKeyboard = false,
                     bitwardenDetailVisible = false,
                     bitwardenEditVisible = true,
-                    bitwardenEditFocused = true,
+                    bitwardenEditFocused = false,
                     bitwardenEditField = BitwardenEditField.NAME,
-                    enterKeyText = "保存",
+                    bitwardenEditScrollPx = 0,
+                    enterKeyText = "发送",
                 )
             },
             onBitwardenEditFieldFocus = { field, customIndex, customIsName ->
                 service.uiState.value = service.uiState.value.copy(
                     bitwardenEditFocused = true,
+                    bitwardenKeyAreaKeyboard = true,
+                    bitwardenSearchFocused = false,
                     bitwardenEditField = field,
                     bitwardenEditCustomIndex = customIndex,
                     bitwardenEditCustomIsName = customIsName,
-                    enterKeyText = "保存",
+                    enterKeyText = "完成",
                 )
+            },
+            onBitwardenEditClearFocus = {
+                service.uiState.value = service.uiState.value.copy(
+                    bitwardenEditFocused = false,
+                    bitwardenKeyAreaKeyboard = false,
+                    enterKeyText = "发送",
+                )
+                service.mainHandler.post {
+                    BitwardenEditFormHolders.clear()
+                    BitwardenAppPickerEditTextHolder.editText = null
+                }
+            },
+            onBitwardenEditScrollSave = { px ->
+                service.uiState.value = service.uiState.value.copy(bitwardenEditScrollPx = px)
+            },
+            onBitwardenCustomFieldRemoved = onBitwardenCustomFieldRemoved@{ removedIndex ->
+                val s = service.uiState.value
+                if (s.bitwardenEditField != BitwardenEditField.CUSTOM) return@onBitwardenCustomFieldRemoved
+                val cur = s.bitwardenEditCustomIndex
+                val next = when {
+                    cur > removedIndex -> cur - 1
+                    cur == removedIndex -> (cur - 1).coerceAtLeast(0)
+                    else -> cur
+                }
+                val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(service)
+                // 回调在 removeCustomField 之前：postSize = 当前 size - 1
+                val postSize = ((repo.state.value as? com.kingzcheung.xime.bitwarden.BitwardenUiState.Editing)
+                    ?.fields?.size ?: 1) - 1
+                if (postSize <= 0 && cur == removedIndex) {
+                    service.uiState.value = s.copy(
+                        bitwardenEditFocused = false,
+                        bitwardenKeyAreaKeyboard = false,
+                        bitwardenEditField = BitwardenEditField.NAME,
+                        bitwardenEditCustomIndex = 0,
+                        enterKeyText = "发送",
+                    )
+                } else {
+                    service.uiState.value = s.copy(
+                        bitwardenEditCustomIndex = next.coerceIn(0, (postSize - 1).coerceAtLeast(0)),
+                    )
+                }
+            },
+            onBitwardenAppPickerActiveChange = { active ->
+                val s = service.uiState.value
+                if (active) {
+                    service.uiState.value = s.copy(
+                        bitwardenEditFocused = true,
+                        bitwardenKeyAreaKeyboard = true,
+                        bitwardenSearchFocused = false,
+                        enterKeyText = "完成",
+                    )
+                } else {
+                    service.uiState.value = s.copy(
+                        bitwardenEditFocused = false,
+                        bitwardenKeyAreaKeyboard = false,
+                        enterKeyText = "发送",
+                    )
+                    BitwardenAppPickerEditTextHolder.editText = null
+                }
             },
             onBitwardenSync = {
                 val repo = com.kingzcheung.xime.bitwarden.BitwardenVaultRepository.getInstance(service)
@@ -619,7 +773,7 @@ internal fun rememberImeKeyboardCallbacks(
                     val result = repo.syncNow()
                     withContext(Dispatchers.Main) {
                         val msg = if (result.isSuccess) {
-                            "同步完成"
+                            "同步成功"
                         } else {
                             result.exceptionOrNull()?.message?.takeIf { it.isNotBlank() } ?: "同步失败"
                         }

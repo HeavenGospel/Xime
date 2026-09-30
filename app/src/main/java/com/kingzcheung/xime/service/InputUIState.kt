@@ -83,6 +83,13 @@ data class InputUIState(
     /** Bitwarden 搜索面板（候选栏上方）。 */
     val bitwardenSearchVisible: Boolean = false,
     val bitwardenSearchFocused: Boolean = false,
+    /**
+     * 按键区是否显示系统键盘（相对密码页列表/详情/编辑）。
+     * true = 键盘；false = 当前密码页内容。搜索/字段聚焦时视为键盘态。
+     */
+    val bitwardenKeyAreaKeyboard: Boolean = false,
+    /** 编辑表单滚动位置（字段输入往返时恢复）。 */
+    val bitwardenEditScrollPx: Int = 0,
     /** Bitwarden 添加/编辑弹层。 */
     val bitwardenEditVisible: Boolean = false,
     val bitwardenEditFocused: Boolean = false,

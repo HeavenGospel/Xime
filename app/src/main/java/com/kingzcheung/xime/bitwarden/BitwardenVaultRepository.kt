@@ -39,6 +39,8 @@ class BitwardenVaultRepository private constructor(context: Context) {
 
     val listScrollIndex: Int get() = cachedListIndex
     val listScrollOffset: Int get() = cachedListOffset
+    /** 列表/详情/编辑共用：离开 Unlocked 后仍保留搜索词供顶栏展示。 */
+    val currentQuery: String get() = cachedQuery
 
     init {
         scope.launch { restorePersistedSession() }
@@ -91,7 +93,12 @@ class BitwardenVaultRepository private constructor(context: Context) {
                 _state.value = s.copy(host = host)
             }
             is BitwardenUiState.Editing -> {
-                val appPackage = s.appPackage.ifBlank { host.packageName }
+                // 仅「新建」才用当前宿主 App 填补空关联；编辑已有条目不改写用户关联
+                val appPackage = if (s.existingId == null) {
+                    s.appPackage.ifBlank { host.packageName }
+                } else {
+                    s.appPackage
+                }
                 _state.value = s.copy(host = host, appPackage = appPackage)
             }
             is BitwardenUiState.Viewing -> {
@@ -171,8 +178,8 @@ class BitwardenVaultRepository private constructor(context: Context) {
             username = item.username,
             password = item.password,
             webUri = InstalledApps.firstWebUri(item.uris),
-            appPackage = InstalledApps.firstAppPackage(item.uris)
-                .ifBlank { host.packageName },
+            // 编辑：只用条目已有 androidapp:// 关联，空则保持未关联（不自动绑当前 App）
+            appPackage = InstalledApps.firstAppPackage(item.uris),
             totp = item.totp.orEmpty(),
             notes = item.notes.orEmpty(),
             fields = item.fields,
@@ -566,14 +573,26 @@ class BitwardenVaultRepository private constructor(context: Context) {
             is BitwardenUiState.Viewing -> s.host
             else -> currentHostOrEmpty()
         }
-        _state.value = BitwardenUiState.Unlocked(
-            items = items,
-            host = host,
-            filterCurrentApp = true,
-            query = cachedQuery,
-            loading = false,
-            pinnedIds = pinnedIds(),
-        )
+        // 保存/同步中途不要把 Editing/Viewing 冲成 Unlocked，否则表单会闪成「无编辑中的条目」
+        when (val s = _state.value) {
+            is BitwardenUiState.Editing -> {
+                // 仅刷新缓存；保持 Editing（含 saving）直到 finishEditingAfterSave
+            }
+            is BitwardenUiState.Viewing -> {
+                val refreshed = items.find { it.id == s.item.id } ?: s.item
+                _state.value = s.copy(item = refreshed)
+            }
+            else -> {
+                _state.value = BitwardenUiState.Unlocked(
+                    items = items,
+                    host = host,
+                    filterCurrentApp = true,
+                    query = cachedQuery,
+                    loading = false,
+                    pinnedIds = pinnedIds(),
+                )
+            }
+        }
     }
 
     private fun tokenKeyMissing(): Boolean = false
